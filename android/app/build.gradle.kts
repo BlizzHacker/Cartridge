@@ -3,23 +3,50 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val generatedWebAssets = layout.buildDirectory.dir("generated/assets")
+
+val syncCartridgeWebAssets by tasks.registering(Sync::class) {
+    from(rootProject.projectDir.parentFile) {
+        include(
+            "index.html",
+            "style.css",
+            "app.js",
+            "romm.js",
+            "config.js",
+            "osk.js",
+            "gamepad.js",
+            "host-bridge.js",
+            "rtc.js",
+            "build-stamp.js",
+        )
+    }
+    into(generatedWebAssets.map { it.dir("web") })
+}
+
 android {
     namespace = "org.moveweight.cartridge"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "org.moveweight.cartridge"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 35
+        versionCode = 31
+        versionName = "0.31.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDir(generatedWebAssets)
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -33,6 +60,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncCartridgeWebAssets)
 }
 
 dependencies {

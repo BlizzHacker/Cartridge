@@ -33,11 +33,12 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webview)
         setupWebView()
 
-        // Load configured server or default to setup
+        // Load bundled Cartridge frontend by default so setup, pairing, and library browsing work out of the box
         val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
-        val serverUrl = prefs.getString("server_url", "http://10.0.2.2:6868") ?: "http://10.0.2.2:6868"
-        
-        webView.loadUrl(serverUrl)
+        val startUrl = prefs.getString("server_url", null)?.takeIf { it.isNotBlank() }
+            ?: "file:///android_asset/web/index.html"
+
+        webView.loadUrl(startUrl)
     }
 
     override fun onResume() {
@@ -81,6 +82,10 @@ class MainActivity : AppCompatActivity() {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.allowFileAccess = true
         settings.allowContentAccess = true
+        @Suppress("DEPRECATION")
+        settings.allowFileAccessFromFileURLs = true
+        @Suppress("DEPRECATION")
+        settings.allowUniversalAccessFromFileURLs = true
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
 
@@ -89,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                if (url.startsWith("http://") || url.startsWith("https://")) {
+                if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) {
                     return false
                 }
                 if (url.startsWith("intent://") || url.startsWith("cartridge://")) {
@@ -103,7 +108,9 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 // Inject platform identity
                 view?.evaluateJavascript(
-                    "window.__CARTRIDGE_PLATFORM = 'android'; window.__CARTRIDGE_NATIVE = true;",
+                    "window.__CARTRIDGE_PLATFORM = 'android'; window.__CARTRIDGE_NATIVE = true; window.__CARTRIDGE_VERSION = '0.31.0'; " +
+                    "if (document.title === 'Cartridge for Xbox') { document.title = 'Cartridge for Android'; " +
+                    "const h1 = document.querySelector('#view-setup h1'); if (h1) h1.textContent = 'Cartridge for Android'; }",
                     null
                 )
             }
