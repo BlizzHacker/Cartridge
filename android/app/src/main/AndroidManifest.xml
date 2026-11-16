@@ -8,6 +8,39 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <package android:name="com.retroarch" />
+        <package android:name="com.retroarch.aarch64" />
+        <package android:name="com.retroarch.ra32" />
+        <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.dolphinemu.mmjr" />
+        <package android:name="org.ppsspp.ppsspp" />
+        <package android:name="org.ppsspp.ppssppgold" />
+        <package android:name="com.github.stenzek.duckstation" />
+        <package android:name="xyz.aethersx2.android" />
+        <package android:name="io.github.lime3ds.android" />
+        <package android:name="org.azahar_emu.azahar" />
+        <package android:name="org.citra.citra_emu" />
+        <package android:name="me.magnum.melonds" />
+        <package android:name="com.dsemu.drastic" />
+        <package android:name="org.mupen64plusae.v3.fzurita" />
+        <package android:name="org.mupen64plusae.v3.fzurita.pro" />
+        <package android:name="io.recompiled.redream" />
+        <package android:name="com.flycast.emulator" />
+        <package android:name="org.devmiyax.yabasanshioro2" />
+        <package android:name="org.devmiyax.yabasanshioro2.pro" />
+        <package android:name="it.dbtecno.pizzaboygba" />
+        <package android:name="it.dbtecno.pizzaboygbapro" />
+        <package android:name="it.dbtecno.pizzaboy" />
+        <package android:name="com.swordfish.lemuroid" />
+        <package android:name="org.vita3k.emulator" />
+        <package android:name="com.winlator" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:banner="@drawable/ic_launcher"
@@ -22,6 +55,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="unspecified"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -29,6 +63,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
