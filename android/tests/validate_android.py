@@ -27,5 +27,8 @@ content = main_kt.read_text()
 assert "CartridgeNativeBridge" in content, "Bridge missing"
 assert "mapKeyCodeToJsKey" in content, "Gamepad mapper missing"
 assert "launchExternalEmulator" in content, "Emulator launcher missing"
+assert content.index("setContentView(R.layout.activity_main)") < content.index("hideSystemUI()"), (
+    "setContentView must run before hideSystemUI() to avoid NullPointerException on Android 11+ PhoneWindow.mDecor"
+)
 
 print("Cartridge Android project verified successfully.")

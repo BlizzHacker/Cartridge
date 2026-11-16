@@ -227,6 +227,7 @@ function renderSetup(status) {
     const d = document.createElement('div');
     d.className = 'opt' + (i === setupIdx ? ' focus' : '');
     d.innerHTML = `<b>${it.label}</b><span class="dim">${it.sub || ''}</span>`;
+    d.onclick = () => { setupIdx = i; renderSetup(); it.go(); };
     opts.appendChild(d);
   });
 }
@@ -267,10 +268,18 @@ function setupItems() {
       // browser setInsecure is a no-op and there is no bypass to grant —
       // the browser's own trust store is the only answer there.
       if (HOST.present) HOST.setInsecure(CFG.insecureCerts);
+      if (typeof window !== 'undefined' && window.CartridgeNative && window.CartridgeNative.setInsecureCerts) {
+        window.CartridgeNative.setInsecureCerts(CFG.insecureCerts);
+      }
       renderSetup(CFG.insecureCerts
         ? 'Invalid certificates accepted — retry connecting.'
         : 'Certificate checking is back on.');
     },
+  });
+  items.push({
+    label: 'Diagnostics',
+    sub: 'check server connection, controller and build info',
+    go: () => { show('diag'); renderDiag(''); },
   });
   if (CFG.server) items.push({ label: 'Continue', sub: 'sign in to ' + CFG.server,
     go: () => enterAuth() });
@@ -591,6 +600,10 @@ function setupInput(btn) {
     // Settings reached from the library: go back. Otherwise this is the root,
     // and back should leave the app rather than do nothing.
     if (CFG.server && CFG.token) return enterLibrary();
+    if (typeof window !== 'undefined' && window.CartridgeNative && window.CartridgeNative.exitApp) {
+      window.CartridgeNative.exitApp();
+      return;
+    }
     // In a browser there is nothing to exit — closing the tab is the user's job.
     HOST.exit();
     return;
@@ -629,8 +642,11 @@ function renderAuth(status) {
     const d = document.createElement('div');
     d.className = 'tab' + (i === authIdx ? ' current' : '');
     d.textContent = t;
+    d.onclick = () => { authIdx = i; renderAuth(''); };
     tabs.appendChild(d);
   });
+  const credsCta = document.querySelector('#auth-creds .cta');
+  if (credsCta) credsCta.onclick = () => askCredentials();
   $('auth-pair').classList.toggle('hidden', authIdx !== 0);
   $('auth-creds').classList.toggle('hidden', authIdx !== 1);
   if (authIdx === 0) {
@@ -643,6 +659,7 @@ function renderAuth(status) {
       const d = document.createElement('div');
       d.className = 'key' + (i === padIdx ? ' focus' : '');
       d.textContent = k;
+      d.onclick = () => { padIdx = i; authInput('a'); };
       pad.appendChild(d);
     });
   }
@@ -902,6 +919,7 @@ function renderRail() {
     const d = document.createElement('div');
     d.className = 'plat' + (i === platIdx ? ' current' : '');
     d.textContent = `${p.display_name || p.name || p.slug} (${p.rom_count})`;
+    d.onclick = () => { platIdx = i; loadGames(); };
     rail.appendChild(d);
   });
   const cur = rail.children[platIdx];
@@ -914,6 +932,7 @@ function renderGrid() {
   games.forEach((g, i) => {
     const t = document.createElement('div');
     t.className = 'tile' + (i === gameIdx ? ' focus' : '');
+    t.onclick = () => { gameIdx = i; renderGrid(); startGame(g); };
     const cover = ROMM.coverUrl(g);
     if (cover) {
       const img = document.createElement('img');
@@ -1229,6 +1248,7 @@ GP.onRaw((btn, pressed) => {
 // project ships) can be offered as a one-press choice instead of typing a URL.
 let sameOriginServer = '';
 async function detectSameOrigin() {
+  if (!location.origin || location.origin === 'null' || location.protocol === 'file:') return '';
   for (const suffix of ['/romm', '']) {
     try {
       const r = await fetch(location.origin + suffix + '/api/heartbeat');

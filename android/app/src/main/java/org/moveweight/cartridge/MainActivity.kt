@@ -4,21 +4,23 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
+import android.net.http.SslError
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.View
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.webkit.JavascriptInterface
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,13 +29,26 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemUI()
+        // Must set content view BEFORE touching WindowInsetsController, or PhoneWindow.mDecor
+        // is null on Android 11+ (API 30+) and throws NullPointerException on launch.
         setContentView(R.layout.activity_main)
+        hideSystemUI()
 
         webView = findViewById(R.id.webview)
         setupWebView()
 
-        // Load bundled Cartridge frontend by default so setup, pairing, and library browsing work out of the box
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                webView.evaluateJavascript(
+                    "(function(){ if (window.GP && window.GP.triggerUI) { window.GP.triggerUI('b'); return true; } return false; })()"
+                ) { handled ->
+                    if (handled != "true" && webView.canGoBack()) {
+                        webView.goBack()
+                    }
+                }
+            }
+        })
+
         val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
         val startUrl = prefs.getString("server_url", null)?.takeIf { it.isNotBlank() }
             ?: "file:///android_asset/web/index.html"
@@ -44,32 +59,29 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemUI()
-        webView.onResume()
+        if (::webView.isInitialized) {
+            webView.onResume()
+        }
     }
 
     override fun onPause() {
+        if (::webView.isInitialized) {
+            webView.onPause()
+        }
         super.onPause()
-        webView.onPause()
     }
 
     private fun hideSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+        window?.decorView?.post {
+            try {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                val controller = WindowInsetsControllerCompat(window, window.decorView)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } catch (_: Throwable) {
+                // Never crash if an OEM window manager rejects immersive flags during transition
             }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-            )
         }
     }
 
@@ -86,6 +98,7 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccessFromFileURLs = true
         @Suppress("DEPRECATION")
         settings.allowUniversalAccessFromFileURLs = true
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
 
@@ -104,13 +117,22 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
 
+            @SuppressLint("WebViewClientOnReceivedSslError")
+            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("insecure_certs", false)) {
+                    handler?.proceed()
+                } else {
+                    super.onReceivedSslError(view, handler, error)
+                }
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // Inject platform identity
                 view?.evaluateJavascript(
-                    "window.__CARTRIDGE_PLATFORM = 'android'; window.__CARTRIDGE_NATIVE = true; window.__CARTRIDGE_VERSION = '0.31.0'; " +
-                    "if (document.title === 'Cartridge for Xbox') { document.title = 'Cartridge for Android'; " +
-                    "const h1 = document.querySelector('#view-setup h1'); if (h1) h1.textContent = 'Cartridge for Android'; }",
+                    "window.__CARTRIDGE_PLATFORM = 'android'; window.__CARTRIDGE_NATIVE = true; window.__CARTRIDGE_VERSION = '0.31.1'; " +
+                    "if (document.title === 'Cartridge for Xbox') { document.title = 'Cartridge'; " +
+                    "const h1 = document.querySelector('#view-setup h1'); if (h1) h1.textContent = 'Cartridge'; }",
                     null
                 )
             }
@@ -129,40 +151,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Forward gamepad keys directly to WebView
         val keyCode = event.keyCode
         val action = event.action
-
-        when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A,
-            KeyEvent.KEYCODE_BUTTON_B,
-            KeyEvent.KEYCODE_BUTTON_X,
-            KeyEvent.KEYCODE_BUTTON_Y,
-            KeyEvent.KEYCODE_BUTTON_L1,
-            KeyEvent.KEYCODE_BUTTON_R1,
-            KeyEvent.KEYCODE_BUTTON_L2,
-            KeyEvent.KEYCODE_BUTTON_R2,
-            KeyEvent.KEYCODE_BUTTON_START,
-            KeyEvent.KEYCODE_BUTTON_SELECT,
-            KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                val jsKey = mapKeyCodeToJsKey(keyCode)
-                val isDown = (action == KeyEvent.ACTION_DOWN)
-                if (jsKey != null) {
-                    webView.evaluateJavascript(
-                        "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_key', { detail: { key: '$jsKey', down: $isDown } })); }",
-                        null
-                    )
-                }
+        val jsKey = mapKeyCodeToJsKey(keyCode)
+        if (jsKey != null && (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP)) {
+            val isDown = (action == KeyEvent.ACTION_DOWN)
+            if (isDown && event.repeatCount == 0) {
+                webView.evaluateJavascript(
+                    "if (window.GP && window.GP.triggerUI) window.GP.triggerUI('$jsKey');",
+                    null
+                )
             }
+            webView.evaluateJavascript(
+                "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_key', { detail: { key: '$jsKey', down: $isDown } })); }",
+                null
+            )
+            return true
         }
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        // Handle analog sticks and trigger axes
         val lx = event.getAxisValue(MotionEvent.AXIS_X)
         val ly = event.getAxisValue(MotionEvent.AXIS_Y)
         val rx = event.getAxisValue(MotionEvent.AXIS_Z)
@@ -170,29 +179,31 @@ class MainActivity : AppCompatActivity() {
         val lt = event.getAxisValue(MotionEvent.AXIS_LTRIGGER)
         val rt = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
 
-        webView.evaluateJavascript(
-            "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_axes', { detail: { lx: $lx, ly: $ly, rx: $rx, ry: $ry, lt: $lt, rt: $rt } })); }",
-            null
-        )
+        if (::webView.isInitialized) {
+            webView.evaluateJavascript(
+                "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_axes', { detail: { lx: $lx, ly: $ly, rx: $rx, ry: $ry, lt: $lt, rt: $rt } })); }",
+                null
+            )
+        }
         return super.dispatchGenericMotionEvent(event)
     }
 
     private fun mapKeyCodeToJsKey(keyCode: Int): String? {
         return when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> "A"
-            KeyEvent.KEYCODE_BUTTON_B -> "B"
-            KeyEvent.KEYCODE_BUTTON_X -> "X"
-            KeyEvent.KEYCODE_BUTTON_Y -> "Y"
-            KeyEvent.KEYCODE_BUTTON_L1 -> "LB"
-            KeyEvent.KEYCODE_BUTTON_R1 -> "RB"
-            KeyEvent.KEYCODE_BUTTON_L2 -> "LT"
-            KeyEvent.KEYCODE_BUTTON_R2 -> "RT"
-            KeyEvent.KEYCODE_BUTTON_START -> "Start"
-            KeyEvent.KEYCODE_BUTTON_SELECT -> "Select"
-            KeyEvent.KEYCODE_DPAD_UP -> "Up"
-            KeyEvent.KEYCODE_DPAD_DOWN -> "Down"
-            KeyEvent.KEYCODE_DPAD_LEFT -> "Left"
-            KeyEvent.KEYCODE_DPAD_RIGHT -> "Right"
+            KeyEvent.KEYCODE_BUTTON_A -> "a"
+            KeyEvent.KEYCODE_BUTTON_B -> "b"
+            KeyEvent.KEYCODE_BUTTON_X -> "x"
+            KeyEvent.KEYCODE_BUTTON_Y -> "y"
+            KeyEvent.KEYCODE_BUTTON_L1 -> "l1"
+            KeyEvent.KEYCODE_BUTTON_R1 -> "r1"
+            KeyEvent.KEYCODE_BUTTON_L2 -> "l2"
+            KeyEvent.KEYCODE_BUTTON_R2 -> "r2"
+            KeyEvent.KEYCODE_BUTTON_START -> "start"
+            KeyEvent.KEYCODE_BUTTON_SELECT -> "select"
+            KeyEvent.KEYCODE_DPAD_UP -> "up"
+            KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+            KeyEvent.KEYCODE_DPAD_LEFT -> "left"
+            KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
             else -> null
         }
     }
@@ -202,7 +213,18 @@ class MainActivity : AppCompatActivity() {
         fun getPlatform(): String = "android"
 
         @JavascriptInterface
-        fun getVersion(): String = "1.0.0"
+        fun getVersion(): String = "0.31.1"
+
+        @JavascriptInterface
+        fun setInsecureCerts(enabled: Boolean) {
+            val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("insecure_certs", enabled).apply()
+        }
+
+        @JavascriptInterface
+        fun exitApp() {
+            runOnUiThread { finish() }
+        }
 
         @JavascriptInterface
         fun launchExternalEmulator(packageName: String, uriString: String, mimeType: String?): Boolean {
@@ -214,7 +236,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
                 true
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 false
             }
         }
