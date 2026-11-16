@@ -28,6 +28,7 @@ const OSK = (() => {
     { label: ':8080', act: 'ins', text: ':8080' },
     { label: '.com', act: 'ins', text: '.com' },
     { label: 'Delete', act: 'del' },
+    { label: 'Cancel', act: 'cancel' },
     { label: 'Done', act: 'ok' },
   ];
 
@@ -48,6 +49,7 @@ const OSK = (() => {
         const label = typeof k === 'string' ? k : k.label;
         d.className = 'key' + (ri === row && ci === col ? ' focus' : '');
         d.textContent = label;
+        d.onclick = () => { row = ri; col = ci; press(); };
         line.appendChild(d);
       });
       grid.appendChild(line);
@@ -121,6 +123,7 @@ const OSK = (() => {
     if (k.act === 'shift') { shift = !shift; return render(); }
     if (k.act === 'ins') { value += k.text; return render(''); }
     if (k.act === 'del') { value = value.slice(0, -1); return render(''); }
+    if (k.act === 'cancel') { if (opts && opts.onCancel) return opts.onCancel(); return close(); }
     if (k.act === 'ok') return submit();
   }
 

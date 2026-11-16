@@ -99,6 +99,7 @@ const GP = (() => {
 
   return {
     onUI(fn) { uiHandler = fn; },
+    triggerUI(btn) { if (uiHandler) uiHandler(btn); },
     onRaw(fn) { rawHandler = fn; },
     // Pass null to stop reporting; the stream view turns this on only while it
     // is on screen.
@@ -118,3 +119,4 @@ const GP = (() => {
     get usingHost() { return !!hostState; },
   };
 })();
+if (typeof window !== 'undefined') window.GP = GP;

@@ -15,7 +15,7 @@ html,body { background:var(--bg); color:var(--fg);
 .hint { font-size:2.1vh; color:var(--dim); max-width:70vw; }
 .lede { font-size:2.4vh; max-width:70vw; color:var(--fg); }
 
-.view { position:absolute; inset:0; padding:5vh 5vw; }
+.view { position:absolute; inset:0; padding:5vh 5vw; overflow-y:auto; }
 h1 { color:var(--accent); font-size:4.4vh; }
 h2 { color:var(--accent); font-size:3.2vh; }
 
@@ -67,19 +67,19 @@ h2 { color:var(--accent); font-size:3.2vh; }
 #view-library header { display:flex; gap:2vw; font-size:2.6vh;
   align-items:baseline; }
 #lib-title { color:var(--accent); font-weight:bold; }
-#platform-rail { display:flex; gap:1vh; overflow-x:hidden; flex:none; }
+#platform-rail { display:flex; gap:1vh; overflow-x:auto; flex:none; }
 #platform-rail .plat { padding:1vh 2vh; font-size:2.2vh; white-space:nowrap;
-  background:var(--panel); border:2px solid var(--line); border-radius:3vh; }
+  background:var(--panel); border:2px solid var(--line); border-radius:3vh; cursor:pointer; }
 #platform-rail .plat.current { border-color:var(--good); color:var(--good); }
 /* Rows are sized explicitly. With grid-auto-rows:auto the track algorithm
  * cannot resolve a cover whose height comes from aspect-ratio on a percentage
  * width, and every row collapses to the container height divided by the row
  * count (11px tall tiles with the artwork overflowing and clipped). */
 #game-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:1.5vh;
-  grid-auto-rows:30vh; overflow-y:hidden; flex:1; align-content:start; }
+  grid-auto-rows:30vh; overflow-y:auto; flex:1; align-content:start; }
 #game-grid .tile { background:var(--panel); border:3px solid var(--line);
   border-radius:1vh; overflow:hidden; display:flex; flex-direction:column;
-  height:100%; }
+  height:100%; cursor:pointer; }
 #game-grid .tile img, #game-grid .tile .ph { width:100%; height:23.5vh;
   flex:none; object-fit:cover; background:#000; }
 /* Clamp rather than clip: ROM names are long and a hard cut mid-word reads as
@@ -111,3 +111,16 @@ h2 { color:var(--accent); font-size:3.2vh; }
 .log li.ok { color:var(--good); }
 .log li.bad { color:#ff8a80; }
 .log li.busy { color:var(--accent); }
+
+#setup-options .opt, .tabs .tab, .cta, #pair-pad .key, .osk-row .key { cursor:pointer; }
+
+@media (max-width: 900px) {
+  .view { padding:3vh 4vw; }
+  .hint, .lede { max-width:92vw; }
+  #setup-options { width:100%; }
+  #osk-value { min-width:90vw; }
+  .osk-row { flex-wrap:wrap; }
+  .osk-row .key { width:7.5vw; min-width:34px; height:44px; font-size:16px; }
+  .osk-row.osk-actions .key { padding:0 12px; font-size:14px; }
+  #game-grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
+}
