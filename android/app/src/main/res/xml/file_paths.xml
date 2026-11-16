@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path name="cartridge_roms" path="." />
+    <files-path name="internal_roms" path="." />
+    <cache-path name="cache_roms" path="." />
+    <external-path name="external_storage" path="." />
+</paths>

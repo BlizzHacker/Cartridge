@@ -8,6 +8,7 @@ import android.net.http.SslError
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
@@ -18,13 +19,23 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import org.moveweight.cartridge.model.RomItem
+import org.moveweight.cartridge.model.ServerConfig
+import org.moveweight.cartridge.ui.CartridgeLauncherApp
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var composeView: ComposeView
     private lateinit var webView: WebView
+    private var isInWebPlayer: Boolean = false
+    private val _gamepadEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val gamepadEvents = _gamepadEvents.asSharedFlow()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,35 +43,62 @@ class MainActivity : AppCompatActivity() {
         // Must set content view BEFORE touching WindowInsetsController, or PhoneWindow.mDecor
         // is null on Android 11+ (API 30+) and throws NullPointerException on launch.
         setContentView(R.layout.activity_main)
-        hideSystemUI()
 
+        composeView = findViewById(R.id.compose_view)
         webView = findViewById(R.id.webview)
         setupWebView()
 
+        composeView.setContent {
+            CartridgeLauncherApp(
+                gamepadEvents = gamepadEvents,
+                onOpenBuiltInWebPlayer = { config, rom ->
+                    openBuiltInWebPlayer(config, rom)
+                }
+            )
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                webView.evaluateJavascript(
-                    "(function(){ if (window.GP && window.GP.triggerUI) { window.GP.triggerUI('b'); return true; } return false; })()"
-                ) { handled ->
-                    if (handled != "true" && webView.canGoBack()) {
-                        webView.goBack()
-                    }
+                if (isInWebPlayer) {
+                    closeBuiltInWebPlayer()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
                 }
             }
         })
+    }
 
-        val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
-        val startUrl = prefs.getString("server_url", null)?.takeIf { it.isNotBlank() }
-            ?: "file:///android_asset/web/index.html"
+    private fun openBuiltInWebPlayer(config: ServerConfig, rom: RomItem?) {
+        isInWebPlayer = true
+        composeView.visibility = View.GONE
+        webView.visibility = View.VISIBLE
+        hideSystemUI()
+        val baseUrl = config.url.trim().trimEnd('/')
+        val targetUrl = when {
+            baseUrl.isNotBlank() && rom != null -> "$baseUrl/rom/${rom.id}"
+            baseUrl.isNotBlank() -> baseUrl
+            else -> "file:///android_asset/web/index.html"
+        }
+        webView.loadUrl(targetUrl)
+    }
 
-        webView.loadUrl(startUrl)
+    private fun closeBuiltInWebPlayer() {
+        isInWebPlayer = false
+        webView.loadUrl("about:blank")
+        webView.visibility = View.GONE
+        composeView.visibility = View.VISIBLE
+        showSystemUI()
     }
 
     override fun onResume() {
         super.onResume()
-        hideSystemUI()
-        if (::webView.isInitialized) {
-            webView.onResume()
+        if (isInWebPlayer) {
+            hideSystemUI()
+            if (::webView.isInitialized) {
+                webView.onResume()
+            }
         }
     }
 
@@ -81,6 +119,17 @@ class MainActivity : AppCompatActivity() {
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } catch (_: Throwable) {
                 // Never crash if an OEM window manager rejects immersive flags during transition
+            }
+        }
+    }
+
+    private fun showSystemUI() {
+        window?.decorView?.post {
+            try {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                val controller = WindowInsetsControllerCompat(window, window.decorView)
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            } catch (_: Throwable) {
             }
         }
     }
@@ -126,16 +175,6 @@ class MainActivity : AppCompatActivity() {
                     super.onReceivedSslError(view, handler, error)
                 }
             }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                view?.evaluateJavascript(
-                    "window.__CARTRIDGE_PLATFORM = 'android'; window.__CARTRIDGE_NATIVE = true; window.__CARTRIDGE_VERSION = '0.31.1'; " +
-                    "if (document.title === 'Cartridge for Xbox') { document.title = 'Cartridge'; " +
-                    "const h1 = document.querySelector('#view-setup h1'); if (h1) h1.textContent = 'Cartridge'; }",
-                    null
-                )
-            }
         }
 
         webView.webChromeClient = WebChromeClient()
@@ -156,6 +195,14 @@ class MainActivity : AppCompatActivity() {
         val jsKey = mapKeyCodeToJsKey(keyCode)
         if (jsKey != null && (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP)) {
             val isDown = (action == KeyEvent.ACTION_DOWN)
+            if (!isInWebPlayer) {
+                if (isDown && event.repeatCount == 0 && (jsKey == "l1" || jsKey == "r1")) {
+                    _gamepadEvents.tryEmit(jsKey)
+                    return true
+                }
+                // Let Compose focus system and native Android keyboard handle D-pad and buttons naturally!
+                return super.dispatchKeyEvent(event)
+            }
             if (isDown && event.repeatCount == 0) {
                 webView.evaluateJavascript(
                     "if (window.GP && window.GP.triggerUI) window.GP.triggerUI('$jsKey');",
@@ -172,14 +219,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        val lx = event.getAxisValue(MotionEvent.AXIS_X)
-        val ly = event.getAxisValue(MotionEvent.AXIS_Y)
-        val rx = event.getAxisValue(MotionEvent.AXIS_Z)
-        val ry = event.getAxisValue(MotionEvent.AXIS_RZ)
-        val lt = event.getAxisValue(MotionEvent.AXIS_LTRIGGER)
-        val rt = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
+        if (isInWebPlayer && ::webView.isInitialized) {
+            val lx = event.getAxisValue(MotionEvent.AXIS_X)
+            val ly = event.getAxisValue(MotionEvent.AXIS_Y)
+            val rx = event.getAxisValue(MotionEvent.AXIS_Z)
+            val ry = event.getAxisValue(MotionEvent.AXIS_RZ)
+            val lt = event.getAxisValue(MotionEvent.AXIS_LTRIGGER)
+            val rt = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
 
-        if (::webView.isInitialized) {
             webView.evaluateJavascript(
                 "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_axes', { detail: { lx: $lx, ly: $ly, rx: $rx, ry: $ry, lt: $lt, rt: $rt } })); }",
                 null
@@ -213,7 +260,7 @@ class MainActivity : AppCompatActivity() {
         fun getPlatform(): String = "android"
 
         @JavascriptInterface
-        fun getVersion(): String = "0.31.1"
+        fun getVersion(): String = "0.32.0"
 
         @JavascriptInterface
         fun setInsecureCerts(enabled: Boolean) {
@@ -223,7 +270,13 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun exitApp() {
-            runOnUiThread { finish() }
+            runOnUiThread {
+                if (isInWebPlayer) {
+                    closeBuiltInWebPlayer()
+                } else {
+                    finish()
+                }
+            }
         }
 
         @JavascriptInterface
