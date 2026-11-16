@@ -1,0 +1,98 @@
+name: Build Cartridge for Android
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-apk.yml'
+      - '*.js'
+      - 'index.html'
+      - 'style.css'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-apk.yml'
+      - '*.js'
+      - 'index.html'
+      - 'style.css'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Validate Android manifest and project structure
+        run: python3 android/tests/validate_android.py
+
+      - name: Generate build stamp
+        run: |
+          sha=$(git rev-parse --short HEAD)
+          date=$(date -u +%Y-%m-%d)
+          echo "window.__CARTRIDGE_BUILD = { sha: '$sha', date: '$date' };" > build-stamp.js
+          cat build-stamp.js
+
+      - name: Build Cartridge Android APK
+        run: |
+          gradle -p android assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK contents and stage release asset
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, shutil, zipfile
+
+          apk = pathlib.Path("android/app/build/outputs/apk/release/app-release.apk")
+          assert apk.is_file(), f"APK was not produced at {apk}"
+          with zipfile.ZipFile(apk) as zf:
+              names = set(zf.namelist())
+          required = {
+              "AndroidManifest.xml",
+              "classes.dex",
+              "assets/web/index.html",
+              "assets/web/style.css",
+              "assets/web/app.js",
+              "assets/web/romm.js",
+              "assets/web/config.js",
+              "assets/web/osk.js",
+              "assets/web/gamepad.js",
+              "assets/web/host-bridge.js",
+              "assets/web/rtc.js",
+              "assets/web/build-stamp.js",
+          }
+          missing = sorted(required - names)
+          assert not missing, f"APK is missing required entries: {missing}"
+          assert any(n.startswith("META-INF/") for n in names), "APK signature metadata missing"
+
+          out = pathlib.Path("Cartridge-Android-0.31.0.apk")
+          shutil.copy2(apk, out)
+          digest = hashlib.sha256(out.read_bytes()).hexdigest()
+          print(f"Verified {out} ({out.stat().st_size:,} bytes, sha256={digest})")
+          PY
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cartridge-Android-apk
+          path: Cartridge-Android-0.31.0.apk
+          if-no-files-found: error
