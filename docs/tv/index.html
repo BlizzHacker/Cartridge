@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoveWeight TV — 1-Click Retro Gaming &amp; Streaming Box Setup</title>
+  <meta name="description" content="Turn any $20 Onn 4K or Android TV box into a debloated, ready-to-play retro gaming console (1–4 Xbox controllers) and movie streaming box in 1 click.">
+  <style>
+    :root {
+      --bg: #070B16;
+      --bg2: #0C1327;
+      --card: #111A33;
+      --border: #263960;
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+      --cyan: #38BDF8;
+      --emerald: #4ADE80;
+      --violet: #A78BFA;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at top center, #122042 0%, var(--bg) 52%);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    a { color: var(--cyan); text-decoration: none; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 80px; }
+
+    /* Header */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0 36px; border-bottom: 1px solid rgba(56,189,248,0.14);
+      margin-bottom: 42px; flex-wrap: wrap; gap: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 900; letter-spacing: 1.5px; font-size: 18px; color: var(--text); }
+    .brand-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      color: #070B16; font-size: 18px; font-weight: 900;
+    }
+    .nav-links { display: flex; gap: 18px; font-size: 14px; font-weight: 600; }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--cyan); }
+
+    /* Hero */
+    .hero { text-align: center; max-width: 820px; margin: 0 auto 56px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.4);
+      color: var(--emerald); font-size: 12.5px; font-weight: 700;
+      padding: 6px 14px; border-radius: 999px; margin-bottom: 18px;
+    }
+    h1 {
+      font-size: clamp(2rem, 4.5vw, 3.2rem); font-weight: 900; line-height: 1.12;
+      letter-spacing: -0.02em; margin-bottom: 18px;
+    }
+    h1 span { background: linear-gradient(90deg, var(--cyan), var(--emerald)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { color: var(--muted); font-size: 1.1rem; margin-bottom: 28px; }
+
+    .cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-bottom: 14px; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--cyan), #0EA5E9);
+      color: #070B16; font-weight: 900; font-size: 16px;
+      padding: 15px 28px; border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(56,189,248,0.35);
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(56,189,248,0.5); }
+    .btn-secondary {
+      background: var(--card); color: var(--text); font-weight: 700; font-size: 15px;
+      padding: 15px 22px; border-radius: 12px; border: 1px solid var(--border);
+      transition: border-color .15s ease;
+    }
+    .btn-secondary:hover { border-color: var(--cyan); }
+    .sub-note { font-size: 12.5px; color: var(--muted); }
+
+    /* Sections */
+    section { margin-top: 64px; }
+    h2 { font-size: 1.75rem; font-weight: 900; margin-bottom: 8px; }
+    .sec-sub { color: var(--muted); margin-bottom: 24px; font-size: 15px; }
+
+    /* Screenshot Gallery */
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 20px; }
+    .shot {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      overflow: hidden; transition: transform .15s ease, border-color .15s ease;
+    }
+    .shot:hover { transform: translateY(-3px); border-color: var(--cyan); }
+    .shot img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; background: #050811; }
+    .shot-cap { padding: 14px 16px; }
+    .shot-cap h3 { font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+    .shot-cap p { font-size: 13px; color: var(--muted); }
+    .shot-wide { grid-column: 1 / -1; }
+
+    /* Steps */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+    .step {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px;
+    }
+    .step-num {
+      display: inline-flex; width: 32px; height: 32px; border-radius: 10px;
+      background: rgba(56,189,248,0.15); border: 1px solid var(--cyan);
+      color: var(--cyan); font-weight: 900; align-items: center; justify-content: center;
+      margin-bottom: 12px;
+    }
+    .step h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+    .step p, .step li { font-size: 14px; color: var(--muted); }
+    .step ol, .step ul { margin-left: 18px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .step b { color: var(--text); }
+
+    /* Features Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+    }
+    .card h3 { font-size: 15.5px; font-weight: 800; color: var(--cyan); margin-bottom: 6px; }
+    .card p { font-size: 13.5px; color: var(--muted); }
+
+    /* Controller table */
+    .controls {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+    }
+    .ctrl { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+    .key {
+      background: #080E1E; border: 1px solid var(--cyan); color: var(--cyan);
+      font-weight: 800; font-size: 12px; padding: 4px 10px; border-radius: 7px; white-space: nowrap;
+    }
+
+    footer {
+      margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--border);
+      text-align: center; color: var(--muted); font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <div class="brand">
+        <div class="brand-icon">▶</div>
+        MOVEWEIGHT TV
+      </div>
+      <div class="nav-links">
+        <a href="#screenshots">Live Proof</a>
+        <a href="#guide">3-Step Guide</a>
+        <a href="#controls">Xbox Controls</a>
+        <a href="https://github.com/BlizzHacker/Cartridge/releases/tag/v0.33.0">Releases</a>
+      </div>
+    </nav>
+
+    <div class="hero">
+      <div class="pill">● Proven Working on $20 Onn 4K &amp; Google TV Boxes</div>
+      <h1>Turn Any Android TV Box Into a <span>Retro Console &amp; Movie Box</span> in 1 Click</h1>
+      <p>
+        No command lines. No PowerShell. No bloatware. Double-click one Windows app to clean up your TV box,
+        keep your favorite Top 10 streaming apps, and play thousands of N64, SNES, NES, GBA, PS1, and Arcade
+        classics with 1–4 Xbox controllers — plus watch movies with Yarr.It, Plex, and Jellyfin.
+      </p>
+      <div class="cta-row">
+        <a class="btn-primary" href="https://github.com/BlizzHacker/Cartridge/releases/download/v0.33.0/MoveWeight-TV-Setup.exe">
+          ⬇ Download Windows 1-Click Installer (.exe)
+        </a>
+        <a class="btn-secondary" href="https://github.com/BlizzHacker/Cartridge/releases/download/v0.33.0/install-android-tv-box.sh">
+          Linux / macOS Installer (.sh)
+        </a>
+        <a class="btn-secondary" href="https://github.com/BlizzHacker/Cartridge/releases/download/v0.33.0/Cartridge-Android-0.33.0.apk">
+          Cartridge APK Only
+        </a>
+      </div>
+      <div class="sub-note">
+        Windows 10/11 (64-bit) · Standalone .exe (no dependencies) · Works with Onn 4K, Onn 4K Pro, Chromecast with Google TV, Nvidia Shield &amp; Android TV
+      </div>
+    </div>
+
+    <section id="screenshots">
+      <h2>Proven Working — Real Screenshots From an Onn 4K Box</h2>
+      <p class="sec-sub">Captured directly from a $20 Walmart Onn 4K Streaming Box set up with this exact 1-click installer.</p>
+
+      <div class="gallery">
+        <div class="shot shot-wide">
+          <img src="/tv/img/cartridge-home.png" alt="Cartridge TV Console UI connected to Home RomM over LAN Direct">
+          <div class="shot-cap">
+            <h3>Cartridge TV Console UI (LAN Direct + Remote Auto-Switch)</h3>
+            <p>Browse your RomM &amp; ROMarr game libraries with Xbox controllers or your TV remote. Automatically uses your local Wi-Fi IP at home and falls back to your domain when traveling.</p>
+          </div>
+        </div>
+
+        <div class="shot">
+          <img src="/tv/img/cartridge-n64.png" alt="Nintendo 64 Library inside Cartridge on Onn 4K">
+          <div class="shot-cap">
+            <h3>1,800+ N64, SNES, NES, GBA, PS1 &amp; Arcade Games</h3>
+            <p>Press LB / RB on your Xbox controller to flip between consoles with full box art and descriptions.</p>
+          </div>
+        </div>
+
+        <div class="shot">
+          <img src="/tv/img/cartridge-ready.png" alt="Mario Kart 64 and Super Mario Kart ready for instant play">
+          <div class="shot-cap">
+            <h3>Couch Multiplayer Ready (2–4 Xbox Controllers)</h3>
+            <p>Mario Kart 64, Super Mario Kart, Smash Bros, and classics cached locally for 1-click launch + Netplay support.</p>
+          </div>
+        </div>
+
+        <div class="shot">
+          <img src="/tv/img/yarrit-tv.png" alt="Yarr.It streaming movies, TV, and Nostalgia TV on Onn 4K">
+          <div class="shot-cap">
+            <h3>Yarr.It Movies, TV &amp; Nostalgia TV (VPN-Protected)</h3>
+            <p>Ad-free movie, TV, and anime streaming powered by Prowlarr + PIA WireGuard VPN egress right on your big screen.</p>
+          </div>
+        </div>
+
+        <div class="shot">
+          <img src="/tv/img/debloated-home.png" alt="Clean debloated Google TV Home screen">
+          <div class="shot-cap">
+            <h3>Clean, Fast, Debloated TV Box (~1 GB Freed)</h3>
+            <p>30 ad/bloat apps removed, animations sped up 2x, keeping only the apps you want: Plex, Jellyfin, Yarr.It, Cartridge, Argosy, Lemuroid &amp; RetroArch.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="guide">
+      <h2>3-Minute Setup Guide (Zero Tech Skills Needed)</h2>
+      <p class="sec-sub">Everything happens over Wi-Fi — you don't even need a USB cable between your PC and the TV box.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Turn On Developer Mode on Your TV</h3>
+          <ol>
+            <li>On your Onn 4K / Google TV, open <b>Settings → System → About</b>.</li>
+            <li>Scroll to <b>Android TV OS build</b> and click <b>OK</b> 7 times until it says <i>"You are now a developer!"</i>.</li>
+            <li>Go back one screen → open <b>Developer options</b> → turn <b>USB debugging ON</b>.</li>
+          </ol>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Run MoveWeight-TV-Setup.exe</h3>
+          <ol>
+            <li>Double-click <b>MoveWeight-TV-Setup.exe</b> on your Windows PC.</li>
+            <li>Pick your TV box from the auto-scanned Wi-Fi dropdown.</li>
+            <li>Check which Top 10 streaming apps to keep (Plex, Jellyfin, Netflix, Prime, Paramount+, etc.).</li>
+            <li>Enter your <b>RomM URL + Username/Password</b> (optional) and click <b>SET UP MY TV BOX</b>.</li>
+            <li>When your TV asks <i>"Allow USB debugging?"</i>, click <b>Always allow → Allow</b>.</li>
+          </ol>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Pair Xbox Controllers &amp; Play!</h3>
+          <ol>
+            <li>On your TV, open <b>Settings → Remotes &amp; Accessories → Pair remote or accessory</b>.</li>
+            <li>Turn on your Xbox Wireless Controller and hold the small <b>Pair button</b> on top for 3 seconds until it flashes fast.</li>
+            <li>Select <b>Xbox Wireless Controller → Pair</b>. Repeat for up to <b>4 controllers</b>!</li>
+            <li>Open <b>Cartridge</b>, <b>Argosy</b>, <b>Lemuroid</b>, or <b>Yarr.It</b> and enjoy!</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="included">
+      <h2>What the 1-Click Installer Sets Up Automatically</h2>
+      <p class="sec-sub">Auto-detects 32-bit (Onn 4K) vs 64-bit (Onn 4K Pro / Nvidia Shield) hardware and configures everything for you.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Cartridge TV Launcher</h3>
+          <p>Console-style RomM &amp; ROMarr frontend with LAN-direct speed at home and automatic remote fallback away from home.</p>
+        </div>
+        <div class="card">
+          <h3>Lemuroid (Zero-Core Emulator)</h3>
+          <p>All-in-one emulator with every core built in — zero core downloads, zero menus, instant play.</p>
+        </div>
+        <div class="card">
+          <h3>Argosy Launcher</h3>
+          <p>Official RomM-native Android TV launcher with automatic emulator core management.</p>
+        </div>
+        <div class="card">
+          <h3>RetroArch (4P Xbox + Netplay)</h3>
+          <p>Pre-tuned for 4 Xbox controllers, threaded 60fps OpenGL video, Netplay relay, and instant L3+R3 quit.</p>
+        </div>
+        <div class="card">
+          <h3>Yarr.It TV + TV Bro</h3>
+          <p>Ad-free movie, TV, and Nostalgia TV streaming backed by PIA WireGuard VPN.</p>
+        </div>
+        <div class="card">
+          <h3>Plex, Jellyfin &amp; Top 10 Apps</h3>
+          <p>Keeps only the streaming services you actually use and strips out 30+ preinstalled bloatware &amp; ad apps.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="controls">
+      <h2>Xbox Controller &amp; Remote Cheat Sheet</h2>
+      <p class="sec-sub">Your regular TV remote also works as a full backup in every app.</p>
+      <div class="controls">
+        <div class="ctrl"><span class="key">D-Pad / Stick</span> Browse games &amp; menus</div>
+        <div class="ctrl"><span class="key">A</span> Play / Select</div>
+        <div class="ctrl"><span class="key">B</span> Back / Exit Search</div>
+        <div class="ctrl"><span class="key">LB / RB</span> Switch Consoles (N64, SNES...)</div>
+        <div class="ctrl"><span class="key">LT / RT</span> Switch Tabs (Library / Ready)</div>
+        <div class="ctrl"><span class="key">Y</span> Jump to Search</div>
+        <div class="ctrl"><span class="key">L3 + R3</span> Quit game back to Cartridge</div>
+        <div class="ctrl"><span class="key">View + Menu</span> Save States &amp; Netplay Menu</div>
+      </div>
+    </section>
+
+    <footer>
+      Built by <b>MoveWeight</b> · Open source on <a href="https://github.com/BlizzHacker/Cartridge">GitHub (BlizzHacker/Cartridge)</a> &amp; <a href="https://github.com/BlizzHacker/yarr-it">Yarr.It</a>
+    </footer>
+  </div>
+</body>
+</html>
