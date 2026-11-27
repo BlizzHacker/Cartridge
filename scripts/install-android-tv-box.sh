@@ -90,6 +90,9 @@ JF_URL="$(curl -s https://api.github.com/repos/jellyfin/jellyfin-androidtv/relea
 ARGOSY_URL="$(curl -s https://api.github.com/repos/rommapp/argosy-launcher/releases/latest | grep -oE "https://[^\"]+${ARGOSY_PATTERN}" | head -n1)"
 [ -n "$ARGOSY_URL" ] && install_url "Argosy Launcher" "$ARGOSY_URL" "argosy.apk"
 
+LEM_URL="$(curl -s https://api.github.com/repos/Swordfish90/Lemuroid/releases/latest | grep -oE 'https://[^"]+\.apk' | head -n1)"
+[ -n "$LEM_URL" ] && install_url "Lemuroid (Zero-Core Emulator)" "$LEM_URL" "lemuroid.apk"
+
 CART_URL="$(curl -s https://api.github.com/repos/BlizzHacker/Cartridge/releases/latest | grep -oE 'https://[^"]+\.apk' | head -n1)"
 [ -n "$CART_URL" ] && install_url "Cartridge" "$CART_URL" "cartridge.apk"
 

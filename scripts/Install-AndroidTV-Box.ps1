@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     MoveWeight 1-Click Android TV / Onn 4K Box Installer (Windows)
     Turns any Android TV / Google TV / Onn 4K box into a ready-to-play:
@@ -48,13 +48,64 @@ function Get-AdbPath {
 $adb = Get-AdbPath
 Write-Host "Using ADB: $adb" -ForegroundColor Green
 
-# 2. Pick Android TV IP
+# 2. Auto-discover Android TV boxes on local subnet or let user type IP
 if ([string]::IsNullOrWhiteSpace($DeviceIp)) {
-    Write-Host "`nTip: On your Android TV / Onn 4K box:" -ForegroundColor Yellow
+    Write-Host "`nScanning your Wi-Fi for Android TV / Google TV / Onn 4K boxes..." -ForegroundColor Cyan
+    $localIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -match '^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1).IPAddress
+    $found = @()
+    if ($localIp) {
+        $subnet = ($localIp -split '\.')[0..2] -join '.'
+        $arpIps = (arp -a | Select-String "$subnet\.\d+") | ForEach-Object { ($_ -split "\s+")[1] } | Sort-Object -Unique
+        foreach ($ip in $arpIps) {
+            $c = [System.Net.Sockets.TcpClient]::new()
+            try {
+                if ($c.ConnectAsync($ip, 8008).Wait(120) -and $c.Connected) {
+                    $name = $ip
+                    try { $info = Invoke-RestMethod -Uri "http://${ip}:8008/setup/eureka_info" -TimeoutSec 1; if ($info.name) { $name = $info.name } } catch {}
+                    $found += [PSCustomObject]@{ IP = $ip; Name = $name }
+                }
+            } catch {} finally { $c.Dispose() }
+        }
+    }
+    if ($found.Count -gt 0) {
+        Write-Host "Found Android TV box(es) on your network:" -ForegroundColor Green
+        for ($i = 0; $i -lt $found.Count; $i++) {
+            Write-Host "  [$($i+1)] $($found[$i].Name) ($($found[$i].IP))" -ForegroundColor White
+        }
+    }
+    Write-Host "`nMake sure USB Debugging is ON on your TV box:" -ForegroundColor Yellow
     Write-Host "  1. Settings -> System -> About -> Android TV OS build (click OK 7 times)" -ForegroundColor Gray
-    Write-Host "  2. Settings -> System -> Developer options -> USB debugging = ON" -ForegroundColor Gray
-    Write-Host "  3. Settings -> System -> About -> Status -> IP address`n" -ForegroundColor Gray
-    $DeviceIp = Read-Host "Enter your Android TV IP address (e.g. 192.168.0.198)"
+    Write-Host "  2. Settings -> System -> Developer options -> USB debugging = ON`n" -ForegroundColor Gray
+    $pick = Read-Host "Enter box number [1-$($found.Count)] or type its IP address (e.g. 192.168.0.198)"
+    if ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $found.Count) {
+        $DeviceIp = $found[[int]$pick - 1].IP
+    } else {
+        $DeviceIp = $pick.Trim()
+    }
+}
+
+# Interactive RomM sign-in helper so friends & family never type passwords with a TV remote!
+if ([string]::IsNullOrWhiteSpace($RommToken)) {
+    Write-Host "`n=== RomM Server Login (Optional - press Enter to keep defaults) ===" -ForegroundColor Cyan
+    $inUrl = Read-Host "RomM Server URL [$RommRemoteUrl]"
+    if (-not [string]::IsNullOrWhiteSpace($inUrl)) { $RommRemoteUrl = $inUrl.Trim().TrimEnd('/') }
+    $inUser = Read-Host "RomM Username (leave blank to sign in on TV later)"
+    if (-not [string]::IsNullOrWhiteSpace($inUser)) {
+        $secPw = Read-Host "RomM Password" -AsSecureString
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPw)
+        $plainPw = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        try {
+            $body = "grant_type=password&username=$([uri]::EscapeDataString($inUser))&password=$([uri]::EscapeDataString($plainPw))&scope=$([uri]::EscapeDataString('me.read roms.read platforms.read assets.read assets.write collections.read'))"
+            $tokRes = Invoke-RestMethod -Uri "$RommRemoteUrl/api/token" -Method Post -ContentType "application/x-www-form-urlencoded" -Body $body -TimeoutSec 10
+            if ($tokRes.access_token) {
+                $RommToken = $tokRes.access_token
+                Write-Host "Signed in to RomM as $inUser!" -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "Could not sign in automatically ($($_.Exception.Message)) — you can still sign in inside Cartridge." -ForegroundColor Yellow
+        }
+    }
 }
 $target = "${DeviceIp}:5555"
 
@@ -152,6 +203,10 @@ $argosyRel = Invoke-RestMethod -Uri "https://api.github.com/repos/rommapp/argosy
 $argosyPattern = if ($is64) { "arm64\.apk$" } else { "arm32\.apk$" }
 $argosyUrl = ($argosyRel.assets | Where-Object { $_.name -match $argosyPattern } | Select-Object -First 1).browser_download_url
 if ($argosyUrl) { Download-And-Install "Argosy Launcher" $argosyUrl "argosy.apk" }
+
+$lemRel = Invoke-RestMethod -Uri "https://api.github.com/repos/Swordfish90/Lemuroid/releases/latest"
+$lemUrl = ($lemRel.assets | Where-Object { $_.name -match "\.apk$" } | Select-Object -First 1).browser_download_url
+if ($lemUrl) { Download-And-Install "Lemuroid (Zero-Core All-in-One Emulator)" $lemUrl "lemuroid.apk" }
 
 $localCartridgeApk = Join-Path $scriptDir "..\android\app\build\outputs\apk\release\app-release.apk"
 if (Test-Path $localCartridgeApk) {
