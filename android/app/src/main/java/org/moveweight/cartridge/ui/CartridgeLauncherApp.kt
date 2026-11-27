@@ -346,21 +346,40 @@ fun CartridgeLauncherApp(
         }
     }
 
+    var lastPlayedRom by remember { mutableStateOf<RomItem?>(null) }
+
+    fun syncBackLastPlayedSave() {
+        val prev = lastPlayedRom ?: return
+        scope.launch {
+            RommApiClient.pushCloudSaveForRom(config, prev).onSuccess { msg ->
+                if (msg.startsWith("Synced")) {
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     fun playRomNow(rom: RomItem, targetPkg: String? = null) {
         val existing = RommApiClient.getLocalRomFile(context, rom)
         val bestPkg = targetPkg ?: EmulatorLauncher.bestInstalledForSlug(context, rom.platformSlug)?.installedPackage
+        lastPlayedRom = rom
         if (existing != null) {
-            val res = EmulatorLauncher.launchRomInExternalEmulator(
-                context = context,
-                romFile = existing,
-                packageName = bestPkg,
-                platformSlug = rom.platformSlug
-            )
-            res.onFailure { err ->
-                Toast.makeText(context, "Launch error: ${err.message}", Toast.LENGTH_LONG).show()
+            scope.launch {
+                // Pull latest RomM cloud save before launching so 2-4P couch progress resumes!
+                RommApiClient.pullCloudSaveForRom(config, rom)
+                val res = EmulatorLauncher.launchRomInExternalEmulator(
+                    context = context,
+                    romFile = existing,
+                    packageName = bestPkg,
+                    platformSlug = rom.platformSlug
+                )
+                res.onFailure { err ->
+                    Toast.makeText(context, "Launch error: ${err.message}", Toast.LENGTH_LONG).show()
+                }
             }
         } else {
             selectedRom = rom
+            scope.launch { RommApiClient.pullCloudSaveForRom(config, rom) }
             startRomDownload(rom, launchPackageAfter = bestPkg, triggerLaunchAfter = true)
         }
     }
@@ -386,7 +405,10 @@ fun CartridgeLauncherApp(
                             refreshLocalState()
                             currentTab = idx
                         },
-                        onRefresh = { syncLibrary(config, selectedPlatformId, searchQuery, selectedCollectionId) }
+                        onRefresh = {
+                            syncBackLastPlayedSave()
+                            syncLibrary(config, selectedPlatformId, searchQuery, selectedCollectionId)
+                        }
                     )
                 }
             },
@@ -466,7 +488,10 @@ fun CartridgeLauncherApp(
                         },
                         onSwitchProfile = { switchProfile(it) },
                         onToggleInstalledOnly = { onlyInstalledFilter = !onlyInstalledFilter },
-                        onRefresh = { syncLibrary(config, selectedPlatformId, searchQuery, selectedCollectionId) },
+                        onRefresh = {
+                            syncBackLastPlayedSave()
+                            syncLibrary(config, selectedPlatformId, searchQuery, selectedCollectionId)
+                        },
                         onOpenServerSetup = { currentTab = 3 },
                         onFocusRom = { focusedRom = it },
                         onSelectRom = { rom -> selectedRom = rom },

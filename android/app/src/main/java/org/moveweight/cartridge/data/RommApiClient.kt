@@ -603,6 +603,106 @@ object RommApiClient {
         return entries.sortedBy { it.title.lowercase() }
     }
 
+    /**
+     * Pulls the latest cloud save for a ROM from RomM (/api/saves?rom_id=...)
+     * directly into RetroArch's saves folder so 2-4P couch sessions resume seamlessly.
+     */
+    suspend fun pullCloudSaveForRom(
+        config: ServerConfig,
+        rom: RomItem
+    ): Result<File?> = withContext(Dispatchers.IO) {
+        val baseUrl = config.effectiveUrl
+        if (baseUrl.isBlank()) return@withContext Result.success(null)
+        try {
+            val (code, body) = requestText(
+                urlString = "$baseUrl/api/saves?rom_id=${rom.id}",
+                method = "GET",
+                headers = authHeaders(config),
+                allowInsecure = config.allowInsecureCerts,
+                timeoutMs = 8000
+            )
+            if (code !in 200..299 || body.isBlank()) return@withContext Result.success(null)
+            val arr = parseJsonArray(body)
+            if (arr.length() == 0) return@withContext Result.success(null)
+            val latest = arr.optJSONObject(0) ?: return@withContext Result.success(null)
+            val downloadPath = latest.optString("download_path", "")
+            val fileName = latest.optString("file_name", "").ifBlank { "${rom.fileName.substringBeforeLast('.')}.srm" }
+            if (downloadPath.isBlank()) return@withContext Result.success(null)
+
+            val fullUrl = if (downloadPath.startsWith("http")) downloadPath else "$baseUrl$downloadPath"
+            val savesDir = File(android.os.Environment.getExternalStorageDirectory(), "RetroArch/saves")
+            savesDir.mkdirs()
+            val outFile = File(savesDir, fileName)
+
+            val conn = openConnection(fullUrl, "GET", authHeaders(config), config.allowInsecureCerts, 15000)
+            try {
+                if (conn.responseCode in 200..299) {
+                    conn.inputStream.use { input ->
+                        FileOutputStream(outFile).use { output -> input.copyTo(output) }
+                    }
+                    return@withContext Result.success(outFile)
+                }
+            } finally {
+                conn.disconnect()
+            }
+            Result.success(null)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Uploads a local RetroArch save file (.srm / .sav / .sra / .eep / .mpk) back to RomM
+     * via POST /api/saves?rom_id=<id>&emulator=retroarch so progress is preserved across devices.
+     */
+    suspend fun pushCloudSaveForRom(
+        config: ServerConfig,
+        rom: RomItem
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val baseUrl = config.effectiveUrl
+        if (baseUrl.isBlank()) return@withContext Result.failure(IllegalStateException("No server configured"))
+        try {
+            val savesDir = File(android.os.Environment.getExternalStorageDirectory(), "RetroArch/saves")
+            val baseName = rom.fileName.substringBeforeLast('.')
+            val saveFile = listOf("srm", "sav", "sra", "eep", "mpk")
+                .map { File(savesDir, "$baseName.$it") }
+                .firstOrNull { it.exists() && it.length() > 0L }
+                ?: return@withContext Result.success("No local save found yet for ${rom.name}")
+
+            val boundary = "----CartridgeSaveBoundary${System.currentTimeMillis()}"
+            val url = URL("$baseUrl/api/saves?rom_id=${rom.id}&emulator=retroarch")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 15000
+                setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                authHeaders(config).forEach { (k, v) -> setRequestProperty(k, v) }
+            }
+            try {
+                conn.outputStream.use { out ->
+                    val header = "--$boundary\r\n" +
+                        "Content-Disposition: form-data; name=\"saveFile\"; filename=\"${saveFile.name}\"\r\n" +
+                        "Content-Type: application/octet-stream\r\n\r\n"
+                    out.write(header.toByteArray(Charsets.UTF_8))
+                    saveFile.inputStream().use { it.copyTo(out) }
+                    out.write("\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    Result.success("Synced ${saveFile.name} to RomM!")
+                } else {
+                    Result.failure(IllegalStateException("RomM save upload HTTP $code"))
+                }
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseRomObject(baseUrl: String, obj: JSONObject, index: Int): RomItem {
         val id = obj.optInt("id", index + 1)
         val platformId = obj.optInt("platform_id", 0)
