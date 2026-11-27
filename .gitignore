@@ -13,3 +13,7 @@ shell/RommForXbox.Shell/*.pfx
 android/.gradle/
 android/.kotlin/
 android/app/build/
+
+# Windows 1-Click Installer build artifacts
+installer/windows/bin/
+installer/windows/obj/
