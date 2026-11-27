@@ -87,9 +87,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -833,7 +839,37 @@ private fun LibraryScreen(
                 onValueChange = onSearchQueryChange,
                 modifier = Modifier
                     .weight(if (isTvWide) 0.42f else 1f)
-                    .focusRequester(searchFocusRequester),
+                    .focusRequester(searchFocusRequester)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.type == KeyEventType.KeyDown) {
+                            when (keyEvent.key) {
+                                Key.DirectionDown -> {
+                                    onTriggerSearch()
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                Key.DirectionUp -> {
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
+                                Key.Escape, Key.Back, Key.ButtonB -> {
+                                    onTriggerSearch()
+                                    focusManager.clearFocus()
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                Key.Enter, Key.NumPadEnter -> {
+                                    onTriggerSearch()
+                                    focusManager.clearFocus()
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                else -> false
+                            }
+                        } else {
+                            false
+                        }
+                    },
                 placeholder = { Text("Search games (e.g. Mario Kart)...", color = Color(0xFF64748B), fontSize = 13.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AccentCyan) },
                 trailingIcon = {
