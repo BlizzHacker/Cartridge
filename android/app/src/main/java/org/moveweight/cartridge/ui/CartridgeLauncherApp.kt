@@ -114,6 +114,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import org.moveweight.cartridge.data.RommApiClient
@@ -181,6 +182,7 @@ fun CartridgeLauncherApp(
     var installedEmulators by remember { mutableStateOf(EmulatorLauncher.scanInstalledEmulators(context)) }
 
     var selectedRom by remember { mutableStateOf<RomItem?>(null) }
+    var showSearchDialog by remember { mutableStateOf(false) }
     var activeDownload by remember { mutableStateOf<DownloadState?>(null) }
     val searchFocusRequester = remember { FocusRequester() }
 
@@ -282,7 +284,11 @@ fun CartridgeLauncherApp(
                     onlyInstalledFilter = !onlyInstalledFilter
                 }
                 "y" -> if (currentTab == 0) {
-                    runCatching { searchFocusRequester.requestFocus() }
+                    if (isTvWide) {
+                        showSearchDialog = true
+                    } else {
+                        runCatching { searchFocusRequester.requestFocus() }
+                    }
                 }
             }
         }
@@ -473,6 +479,7 @@ fun CartridgeLauncherApp(
                         errorMessage = libraryError,
                         coverBitmaps = coverBitmaps,
                         onSearchQueryChange = { searchQuery = it },
+                        onOpenTvSearch = { showSearchDialog = true },
                         onTriggerSearch = {
                             syncLibrary(config, selectedPlatformId, searchQuery, selectedCollectionId)
                         },
@@ -565,6 +572,18 @@ fun CartridgeLauncherApp(
                     onDeleteLocal = {
                         RommApiClient.getLocalRomFile(context, rom)?.delete()
                         refreshLocalState()
+                    }
+                )
+            }
+
+            if (showSearchDialog) {
+                TvSearchDialog(
+                    initialQuery = searchQuery,
+                    onDismiss = { showSearchDialog = false },
+                    onSearch = { q ->
+                        searchQuery = q
+                        showSearchDialog = false
+                        syncLibrary(config, selectedPlatformId, q, selectedCollectionId)
                     }
                 )
             }
@@ -762,6 +781,7 @@ private fun LibraryScreen(
     errorMessage: String?,
     coverBitmaps: MutableMap<Int, Bitmap>,
     onSearchQueryChange: (String) -> Unit,
+    onOpenTvSearch: () -> Unit,
     onTriggerSearch: () -> Unit,
     onSelectPlatform: (Int?) -> Unit,
     onSelectCollection: (Int?) -> Unit,
@@ -859,75 +879,79 @@ private fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier
-                    .weight(if (isTvWide) 0.42f else 1f)
-                    .focusRequester(searchFocusRequester)
-                    .onPreviewKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyDown) {
-                            when (keyEvent.key) {
-                                Key.DirectionDown -> {
-                                    onTriggerSearch()
-                                    focusManager.moveFocus(FocusDirection.Down)
-                                    true
-                                }
-                                Key.DirectionUp -> {
-                                    focusManager.moveFocus(FocusDirection.Up)
-                                    true
-                                }
-                                Key.Escape, Key.Back, Key.ButtonB -> {
-                                    onTriggerSearch()
-                                    focusManager.clearFocus()
-                                    focusManager.moveFocus(FocusDirection.Down)
-                                    true
-                                }
-                                Key.Enter, Key.NumPadEnter -> {
-                                    onTriggerSearch()
-                                    focusManager.clearFocus()
-                                    focusManager.moveFocus(FocusDirection.Down)
-                                    true
-                                }
-                                else -> false
+            if (isTvWide) {
+                var searchBtnFocused by remember { mutableStateOf(false) }
+                Surface(
+                    color = if (searchBtnFocused) Color(0xFF1E3A5F) else BgSurface,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(0.32f)
+                        .onFocusChanged { searchBtnFocused = it.isFocused }
+                        .border(
+                            width = if (searchBtnFocused) 2.5.dp else 1.dp,
+                            color = if (searchBtnFocused) AccentCyan else BorderSubtle,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenTvSearch() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "Search: $searchQuery" else "Search games (Press Y)",
+                            color = if (searchQuery.isNotBlank()) TextPrimary else TextMuted,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            } else {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(searchFocusRequester),
+                    placeholder = { Text("Search games (e.g. Mario Kart)...", color = Color(0xFF64748B), fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AccentCyan) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = {
+                                onSearchQueryChange("")
+                                onTriggerSearch()
+                            }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextMuted)
                             }
-                        } else {
-                            false
                         }
                     },
-                placeholder = { Text("Search games (e.g. Mario Kart)...", color = Color(0xFF64748B), fontSize = 13.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AccentCyan) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = {
-                            onSearchQueryChange("")
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            focusManager.clearFocus()
                             onTriggerSearch()
-                        }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextMuted)
                         }
-                    }
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Search
-                ),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        focusManager.clearFocus()
-                        onTriggerSearch()
-                    }
-                ),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = BorderSubtle,
-                    focusedContainerColor = BgSurface,
-                    unfocusedContainerColor = BgSurface
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentCyan,
+                        unfocusedBorderColor = BorderSubtle,
+                        focusedContainerColor = BgSurface,
+                        unfocusedContainerColor = BgSurface
+                    )
                 )
-            )
+            }
 
             if (isTvWide && platforms.isNotEmpty()) {
                 Row(
@@ -1992,6 +2016,64 @@ private fun EmptyLibraryCard(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(buttonLabel, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvSearchDialog(
+    initialQuery: String,
+    onDismiss: () -> Unit,
+    onSearch: (String) -> Unit
+) {
+    var text by remember(initialQuery) { mutableStateOf(initialQuery) }
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = BgSurface),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.5.dp, AccentCyan, RoundedCornerShape(18.dp))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("Search Games", color = AccentCyan, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Type game name (e.g. Mario Kart)...", color = TextMuted) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearch(text.trim()) }),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { onSearch(text.trim()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = BgDeep),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Search", fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = { onSearch("") },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Clear", color = TextPrimary)
+                    }
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Back", color = TextMuted)
                     }
                 }
             }
