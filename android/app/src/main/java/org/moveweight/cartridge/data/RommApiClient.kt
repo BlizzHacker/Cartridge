@@ -10,11 +10,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.moveweight.cartridge.model.CollectionItem
 import org.moveweight.cartridge.model.LocalRomEntry
 import org.moveweight.cartridge.model.PlatformItem
 import org.moveweight.cartridge.model.ProbeResult
 import org.moveweight.cartridge.model.RomItem
 import org.moveweight.cartridge.model.ServerConfig
+import org.moveweight.cartridge.model.ServerProfile
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -32,12 +34,19 @@ import javax.net.ssl.X509TrustManager
 
 object RommApiClient {
 
-    private val coverCache = object : LruCache<String, Bitmap>(48) {}
+    private val coverCache = object : LruCache<String, Bitmap>(72) {}
 
     fun loadSavedConfig(context: Context): ServerConfig {
         val prefs = context.getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+        val url = prefs.getString("server_url", "")?.trim()?.trimEnd('/') ?: ""
+        val localUrl = prefs.getString("local_url", "")?.trim()?.trimEnd('/') ?: ""
+        val remoteUrl = prefs.getString("remote_url", "")?.trim()?.trimEnd('/') ?: ""
         return ServerConfig(
-            url = prefs.getString("server_url", "")?.trim()?.trimEnd('/') ?: "",
+            url = url.ifBlank { localUrl }.ifBlank { remoteUrl },
+            localUrl = localUrl,
+            remoteUrl = remoteUrl,
+            activeServerName = prefs.getString("server_name", "Primary Library") ?: "Primary Library",
+            isUsingLocalLan = isLanUrl(url.ifBlank { localUrl }),
             token = prefs.getString("auth_token", "") ?: "",
             basicAuth = prefs.getString("basic_auth", "") ?: "",
             username = prefs.getString("auth_username", "") ?: "",
@@ -49,8 +58,12 @@ object RommApiClient {
 
     fun saveConfig(context: Context, config: ServerConfig) {
         val prefs = context.getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+        val activeUrl = config.effectiveUrl
         prefs.edit()
-            .putString("server_url", config.url.trim().trimEnd('/'))
+            .putString("server_url", activeUrl)
+            .putString("local_url", config.localUrl.trim().trimEnd('/'))
+            .putString("remote_url", config.remoteUrl.trim().trimEnd('/'))
+            .putString("server_name", config.activeServerName.ifBlank { "Primary Library" })
             .putString("auth_token", config.token)
             .putString("basic_auth", config.basicAuth)
             .putString("auth_username", config.username)
@@ -60,12 +73,127 @@ object RommApiClient {
             .apply()
     }
 
+    fun loadServerProfiles(context: Context): List<ServerProfile> {
+        val prefs = context.getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+        val raw = prefs.getString("server_profiles_json", "") ?: ""
+        if (raw.isBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            val list = mutableListOf<ServerProfile>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                list.add(
+                    ServerProfile(
+                        id = o.optString("id", "srv_$i"),
+                        name = o.optString("name", "Library ${i + 1}"),
+                        localUrl = o.optString("localUrl", ""),
+                        remoteUrl = o.optString("remoteUrl", ""),
+                        token = o.optString("token", ""),
+                        basicAuth = o.optString("basicAuth", ""),
+                        username = o.optString("username", ""),
+                        authMode = o.optString("authMode", "password"),
+                        allowInsecureCerts = o.optBoolean("allowInsecureCerts", false)
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveServerProfiles(context: Context, profiles: List<ServerProfile>) {
+        val arr = JSONArray()
+        profiles.forEach { p ->
+            arr.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("name", p.name)
+                    .put("localUrl", p.localUrl)
+                    .put("remoteUrl", p.remoteUrl)
+                    .put("token", p.token)
+                    .put("basicAuth", p.basicAuth)
+                    .put("username", p.username)
+                    .put("authMode", p.authMode)
+                    .put("allowInsecureCerts", p.allowInsecureCerts)
+            )
+        }
+        val prefs = context.getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("server_profiles_json", arr.toString()).apply()
+    }
+
+    fun upsertProfileFromConfig(context: Context, config: ServerConfig): List<ServerProfile> {
+        val current = loadServerProfiles(context).toMutableList()
+        val id = config.activeServerName.lowercase().replace(Regex("[^a-z0-9]+"), "_").ifBlank { "primary" }
+        val profile = ServerProfile(
+            id = id,
+            name = config.activeServerName.ifBlank { "Primary Library" },
+            localUrl = config.localUrl.ifBlank { if (isLanUrl(config.url)) config.url else "" },
+            remoteUrl = config.remoteUrl.ifBlank { if (!isLanUrl(config.url)) config.url else "" },
+            token = config.token,
+            basicAuth = config.basicAuth,
+            username = config.username,
+            authMode = config.authMode,
+            allowInsecureCerts = config.allowInsecureCerts
+        )
+        val idx = current.indexOfFirst { it.id == id || (it.localUrl.isNotBlank() && it.localUrl == profile.localUrl) }
+        if (idx >= 0) current[idx] = profile else current.add(profile)
+        saveServerProfiles(context, current)
+        return current
+    }
+
+    fun isLanUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("://192.168.") ||
+            lower.contains("://10.") ||
+            lower.contains("://127.") ||
+            Regex("://172\\.(1[6-9]|2\\d|3[01])\\.").containsMatchIn(lower) ||
+            lower.contains(".local")
+    }
+
+    /**
+     * Automatically prefers direct local LAN IP when on home Wi-Fi (bypassing Cloudflare),
+     * and falls back seamlessly to the remote domain when away from home.
+     */
+    suspend fun resolveBestConfig(config: ServerConfig): ServerConfig = withContext(Dispatchers.IO) {
+        val local = config.localUrl.trim().trimEnd('/')
+        val remote = config.remoteUrl.trim().trimEnd('/')
+        if (local.isNotBlank()) {
+            if (quickReachable(local, config.allowInsecureCerts, timeoutMs = 1500)) {
+                return@withContext config.copy(url = local, isUsingLocalLan = true)
+            }
+        }
+        if (remote.isNotBlank()) {
+            if (quickReachable(remote, config.allowInsecureCerts, timeoutMs = 3500)) {
+                return@withContext config.copy(url = remote, isUsingLocalLan = isLanUrl(remote))
+            }
+        }
+        val fallback = config.effectiveUrl
+        config.copy(url = fallback, isUsingLocalLan = isLanUrl(fallback))
+    }
+
+    private fun quickReachable(baseUrl: String, allowInsecure: Boolean, timeoutMs: Int): Boolean {
+        for (path in listOf("/api/heartbeat", "/api/v1/status", "/api/platforms")) {
+            try {
+                val (code, _) = requestText(
+                    urlString = "$baseUrl$path",
+                    method = "GET",
+                    allowInsecure = allowInsecure,
+                    timeoutMs = timeoutMs
+                )
+                if (code in 200..299 || code == 401 || code == 403) return true
+            } catch (_: Exception) {
+            }
+        }
+        return false
+    }
+
     suspend fun probeServer(rawInput: String, allowInsecure: Boolean): ProbeResult = withContext(Dispatchers.IO) {
         val cleaned = rawInput.trim().trimEnd('/')
         if (cleaned.isBlank()) {
             return@withContext ProbeResult(
                 ok = false,
-                message = "Enter your RomM or ROMarr server address (for example http://192.168.1.100:6868)."
+                message = "Enter your RomM or ROMarr server address (for example http://192.168.0.94:8080)."
             )
         }
 
@@ -77,8 +205,14 @@ object RommApiClient {
                 baseCandidates.add("$cleaned/romm")
             }
         } else {
-            baseCandidates.add("http://$cleaned")
-            baseCandidates.add("https://$cleaned")
+            val lanFirst = isLanUrl("http://$cleaned")
+            if (lanFirst) {
+                baseCandidates.add("http://$cleaned")
+                baseCandidates.add("https://$cleaned")
+            } else {
+                baseCandidates.add("https://$cleaned")
+                baseCandidates.add("http://$cleaned")
+            }
             baseCandidates.add("http://$cleaned/romm")
             baseCandidates.add("https://$cleaned/romm")
         }
@@ -92,7 +226,7 @@ object RommApiClient {
                         urlString = targetUrl,
                         method = "GET",
                         allowInsecure = allowInsecure,
-                        timeoutMs = 6000
+                        timeoutMs = 5000
                     )
                     if (code in 200..299 || code == 401 || code == 403) {
                         val version = parseVersionFromHeartbeat(body)
@@ -122,7 +256,7 @@ object RommApiClient {
 
         ProbeResult(
             ok = false,
-            message = "Could not reach server at $cleaned. Check that your phone is on the same Wi-Fi/LAN or VPN and the port is correct.",
+            message = "Could not reach server at $cleaned. Check Wi-Fi/LAN or port.",
             logs = logs
         )
     }
@@ -132,7 +266,7 @@ object RommApiClient {
         username: String,
         password: String
     ): Result<ServerConfig> = withContext(Dispatchers.IO) {
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         if (baseUrl.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Server URL is empty"))
         }
@@ -140,9 +274,8 @@ object RommApiClient {
         val basicRaw = "$username:$password"
         val basicEncoded = Base64.encodeToString(basicRaw.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
-        // 1. Try RomM OAuth2 /api/token
         try {
-            val scope = "me.read roms.read platforms.read assets.read assets.write"
+            val scope = "me.read roms.read platforms.read assets.read assets.write collections.read"
             val form = "grant_type=password" +
                 "&username=" + URLEncoder.encode(username, "UTF-8") +
                 "&password=" + URLEncoder.encode(password, "UTF-8") +
@@ -171,7 +304,6 @@ object RommApiClient {
         } catch (_: Exception) {
         }
 
-        // 2. Try Basic Auth verification against /api/platforms or /api/users/me
         try {
             val (code, _) = requestText(
                 urlString = "$baseUrl/api/platforms",
@@ -199,7 +331,7 @@ object RommApiClient {
         config: ServerConfig,
         rawCode: String
     ): Result<ServerConfig> = withContext(Dispatchers.IO) {
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         val cleanCode = rawCode.trim().uppercase()
         if (cleanCode.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Enter the pairing code shown in RomM / ROMarr"))
@@ -236,7 +368,7 @@ object RommApiClient {
     }
 
     suspend fun fetchPlatforms(config: ServerConfig): Result<List<PlatformItem>> = withContext(Dispatchers.IO) {
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         if (baseUrl.isBlank()) return@withContext Result.success(emptyList())
 
         try {
@@ -258,20 +390,66 @@ object RommApiClient {
                 val name = obj.optString("display_name", "")
                     .ifBlank { obj.optString("name", slug.uppercase()) }
                 val romCount = obj.optInt("rom_count", 0)
-                list.add(PlatformItem(id = id, slug = slug, name = name, romCount = romCount))
+                if (romCount > 0 || list.size < 40) {
+                    list.add(PlatformItem(id = id, slug = slug, name = name, romCount = romCount))
+                }
             }
-            Result.success(list.sortedBy { it.name.lowercase() })
+            val prioritySlugs = listOf(
+                "n64", "snes", "nes", "gba", "psx", "genesis", "arcade", "nds",
+                "psp", "gb", "gbc", "gc", "dc", "ps2", "saturn", "sms"
+            )
+            Result.success(
+                list.sortedWith(
+                    compareBy<PlatformItem> {
+                        val idx = prioritySlugs.indexOf(it.slug.lowercase())
+                        if (idx >= 0) idx else prioritySlugs.size + 1
+                    }.thenByDescending { it.romCount }
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun fetchCollections(config: ServerConfig): Result<List<CollectionItem>> = withContext(Dispatchers.IO) {
+        val baseUrl = config.effectiveUrl
+        if (baseUrl.isBlank()) return@withContext Result.success(emptyList())
+        try {
+            val (code, body) = requestText(
+                urlString = "$baseUrl/api/collections",
+                method = "GET",
+                headers = authHeaders(config),
+                allowInsecure = config.allowInsecureCerts,
+                timeoutMs = 8000
+            )
+            if (code !in 200..299) return@withContext Result.success(emptyList())
+            val arr = parseJsonArray(body)
+            val out = mutableListOf<CollectionItem>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                out.add(
+                    CollectionItem(
+                        id = obj.optInt("id", i + 1),
+                        name = obj.optString("name", "Collection"),
+                        romCount = obj.optInt("rom_count", 0),
+                        isPublic = obj.optBoolean("is_public", false),
+                        isVirtual = obj.optBoolean("is_virtual", false)
+                    )
+                )
+            }
+            Result.success(out)
+        } catch (_: Exception) {
+            Result.success(emptyList())
         }
     }
 
     suspend fun fetchRoms(
         config: ServerConfig,
         platformId: Int? = null,
-        searchQuery: String = ""
+        searchQuery: String = "",
+        collectionId: Int? = null
     ): Result<List<RomItem>> = withContext(Dispatchers.IO) {
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         if (baseUrl.isBlank()) return@withContext Result.success(emptyList())
 
         try {
@@ -279,6 +457,9 @@ object RommApiClient {
             if (platformId != null && platformId > 0) {
                 params.add("platform_id=$platformId")
                 params.add("platform_ids=$platformId")
+            }
+            if (collectionId != null && collectionId > 0) {
+                params.add("collection_id=$collectionId")
             }
             if (searchQuery.isNotBlank()) {
                 params.add("search_term=" + URLEncoder.encode(searchQuery.trim(), "UTF-8"))
@@ -298,9 +479,14 @@ object RommApiClient {
             val roms = mutableListOf<RomItem>()
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
-                roms.add(parseRomObject(baseUrl, obj, i))
+                val item = parseRomObject(baseUrl, obj, i)
+                val lowerFile = item.fileName.lowercase()
+                if (lowerFile.endsWith(".txt") || lowerFile.endsWith(".nfo") || lowerFile.startsWith("_info")) {
+                    continue
+                }
+                roms.add(item)
             }
-            Result.success(roms)
+            Result.success(roms.sortedByDescending { it.coverUrl.isNotBlank() })
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -332,18 +518,23 @@ object RommApiClient {
         null
     }
 
+    private fun romsBaseDir(context: Context): File {
+        val external = context.getExternalFilesDir(null)
+        return File(external ?: context.filesDir, "roms")
+    }
+
     suspend fun downloadRom(
         context: Context,
         config: ServerConfig,
         rom: RomItem,
         onProgress: (Long, Long) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         val safeFileName = rom.fileName.ifBlank { "${rom.name.replace(Regex("[^a-zA-Z0-9._ -]"), "_")}.rom" }
         val encodedFileName = Uri.encode(safeFileName)
         val downloadUrl = "$baseUrl/api/roms/${rom.id}/content/$encodedFileName"
 
-        val romsRoot = File(context.getExternalFilesDir(null) ?: context.filesDir, "roms/${rom.platformSlug.ifBlank { "default" }}")
+        val romsRoot = File(romsBaseDir(context), rom.platformSlug.ifBlank { "default" })
         romsRoot.mkdirs()
         val destFile = File(romsRoot, safeFileName)
         val tempFile = File(romsRoot, "$safeFileName.part")
@@ -384,13 +575,13 @@ object RommApiClient {
 
     fun getLocalRomFile(context: Context, rom: RomItem): File? {
         val safeFileName = rom.fileName.ifBlank { return null }
-        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "roms/${rom.platformSlug.ifBlank { "default" }}")
+        val dir = File(romsBaseDir(context), rom.platformSlug.ifBlank { "default" })
         val f = File(dir, safeFileName)
         return if (f.exists() && f.length() > 0L) f else null
     }
 
     fun listLocalRoms(context: Context): List<LocalRomEntry> {
-        val root = File(context.getExternalFilesDir(null) ?: context.filesDir, "roms")
+        val root = romsBaseDir(context)
         if (!root.exists()) return emptyList()
         val entries = mutableListOf<LocalRomEntry>()
         root.listFiles()?.forEach { platDir ->
@@ -424,7 +615,7 @@ object RommApiClient {
         val fileName = obj.optString("fs_name", "")
             .ifBlank { obj.optString("file_name", "$name.rom") }
         val fileSizeBytes = obj.optLong("fs_size_bytes", obj.optLong("file_size_bytes", 0L))
-        val summary = obj.optString("summary", "")
+        val summary = if (obj.isNull("summary")) "" else obj.optString("summary", "").takeUnless { it == "null" } ?: ""
 
         val rawCover = obj.optString("path_cover_large", "")
             .ifBlank { obj.optString("path_cover_small", "") }
@@ -485,6 +676,7 @@ object RommApiClient {
             obj.optJSONArray("results")?.let { return it }
             obj.optJSONArray("roms")?.let { return it }
             obj.optJSONArray("platforms")?.let { return it }
+            obj.optJSONArray("collections")?.let { return it }
         }
         return JSONArray()
     }
@@ -555,7 +747,7 @@ object RommApiClient {
             readTimeout = timeoutMs
             instanceFollowRedirects = true
             setRequestProperty("Accept", "application/json, */*")
-            setRequestProperty("User-Agent", "Cartridge-Android/0.32.0")
+            setRequestProperty("User-Agent", "Cartridge-Android/0.33.0")
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
         if (conn is HttpsURLConnection && allowInsecure) {

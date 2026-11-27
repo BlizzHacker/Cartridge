@@ -25,8 +25,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import org.moveweight.cartridge.data.RommApiClient
 import org.moveweight.cartridge.model.RomItem
 import org.moveweight.cartridge.model.ServerConfig
+import org.moveweight.cartridge.model.ServerProfile
 import org.moveweight.cartridge.ui.CartridgeLauncherApp
 
 class MainActivity : AppCompatActivity() {
@@ -40,6 +42,8 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyProvisioningIntent(intent)
+
         // Must set content view BEFORE touching WindowInsetsController, or PhoneWindow.mDecor
         // is null on Android 11+ (API 30+) and throws NullPointerException on launch.
         setContentView(R.layout.activity_main)
@@ -70,12 +74,57 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        applyProvisioningIntent(intent)
+    }
+
+    /**
+     * Allows zero-touch provisioning of local/remote RomM & ROMarr servers via ADB intent extras.
+     */
+    private fun applyProvisioningIntent(intent: Intent?) {
+        intent ?: return
+        val localUrl = intent.getStringExtra("local_url")?.trim()?.trimEnd('/') ?: ""
+        val remoteUrl = intent.getStringExtra("remote_url")?.trim()?.trimEnd('/') ?: ""
+        val serverUrl = intent.getStringExtra("server_url")?.trim()?.trimEnd('/') ?: ""
+        val token = intent.getStringExtra("auth_token")?.trim() ?: ""
+        val basicAuth = intent.getStringExtra("basic_auth")?.trim() ?: ""
+        val username = intent.getStringExtra("username")?.trim() ?: ""
+        val serverName = intent.getStringExtra("server_name")?.trim() ?: ""
+        val profilesJson = intent.getStringExtra("profiles_json")?.trim() ?: ""
+
+        if (profilesJson.isNotBlank()) {
+            val prefs = getSharedPreferences("cartridge_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("server_profiles_json", profilesJson).apply()
+        }
+
+        if (localUrl.isNotBlank() || remoteUrl.isNotBlank() || serverUrl.isNotBlank()) {
+            val current = RommApiClient.loadSavedConfig(this)
+            val updated = current.copy(
+                url = serverUrl.ifBlank { localUrl }.ifBlank { remoteUrl },
+                localUrl = localUrl.ifBlank { current.localUrl },
+                remoteUrl = remoteUrl.ifBlank { current.remoteUrl },
+                activeServerName = serverName.ifBlank { current.activeServerName },
+                token = token.ifBlank { current.token },
+                basicAuth = basicAuth.ifBlank { current.basicAuth },
+                username = username.ifBlank { current.username },
+                authMode = when {
+                    token.isNotBlank() -> "token"
+                    basicAuth.isNotBlank() -> "password"
+                    else -> current.authMode
+                }
+            )
+            RommApiClient.saveConfig(this, updated)
+            RommApiClient.upsertProfileFromConfig(this, updated)
+        }
+    }
+
     private fun openBuiltInWebPlayer(config: ServerConfig, rom: RomItem?) {
         isInWebPlayer = true
         composeView.visibility = View.GONE
         webView.visibility = View.VISIBLE
         hideSystemUI()
-        val baseUrl = config.url.trim().trimEnd('/')
+        val baseUrl = config.effectiveUrl
         val targetUrl = when {
             baseUrl.isNotBlank() && rom != null -> "$baseUrl/rom/${rom.id}"
             baseUrl.isNotBlank() -> baseUrl
@@ -118,7 +167,6 @@ class MainActivity : AppCompatActivity() {
                 controller.systemBarsBehavior =
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } catch (_: Throwable) {
-                // Never crash if an OEM window manager rejects immersive flags during transition
             }
         }
     }
@@ -196,11 +244,10 @@ class MainActivity : AppCompatActivity() {
         if (jsKey != null && (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP)) {
             val isDown = (action == KeyEvent.ACTION_DOWN)
             if (!isInWebPlayer) {
-                if (isDown && event.repeatCount == 0 && (jsKey == "l1" || jsKey == "r1")) {
+                if (isDown && event.repeatCount == 0 && jsKey in setOf("l1", "r1", "l2", "r2", "x", "y")) {
                     _gamepadEvents.tryEmit(jsKey)
                     return true
                 }
-                // Let Compose focus system and native Android keyboard handle D-pad and buttons naturally!
                 return super.dispatchKeyEvent(event)
             }
             if (isDown && event.repeatCount == 0) {
@@ -260,7 +307,7 @@ class MainActivity : AppCompatActivity() {
         fun getPlatform(): String = "android"
 
         @JavascriptInterface
-        fun getVersion(): String = "0.32.0"
+        fun getVersion(): String = "0.33.0"
 
         @JavascriptInterface
         fun setInsecureCerts(enabled: Boolean) {

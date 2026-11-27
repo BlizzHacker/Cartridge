@@ -23,9 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -124,7 +123,7 @@ fun GameDetailDialog(
                                 modifier = Modifier.padding(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.SportsEsports,
+                                    imageVector = Icons.Default.Star,
                                     contentDescription = null,
                                     tint = Color(0xFF38BDF8),
                                     modifier = Modifier.size(36.dp)
@@ -266,7 +265,7 @@ fun GameDetailDialog(
                             modifier = Modifier.weight(1f).height(46.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF38BDF8))
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF38BDF8))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Download ROM", color = Color(0xFFF8FAFC))
                         }
@@ -287,7 +286,7 @@ fun GameDetailDialog(
                         modifier = Modifier.weight(1f).height(46.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.SportsEsports, contentDescription = null, tint = Color(0xFF4ADE80))
+                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFF4ADE80))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Built-In Player", color = Color(0xFFF8FAFC))
                     }

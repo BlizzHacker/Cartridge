@@ -2,8 +2,24 @@ package org.moveweight.cartridge.model
 
 import java.io.File
 
+data class ServerProfile(
+    val id: String,
+    val name: String,
+    val localUrl: String = "",
+    val remoteUrl: String = "",
+    val token: String = "",
+    val basicAuth: String = "",
+    val username: String = "",
+    val authMode: String = "password",
+    val allowInsecureCerts: Boolean = false
+)
+
 data class ServerConfig(
     val url: String = "",
+    val localUrl: String = "",
+    val remoteUrl: String = "",
+    val activeServerName: String = "Primary Library",
+    val isUsingLocalLan: Boolean = false,
     val token: String = "",
     val basicAuth: String = "",
     val username: String = "",
@@ -12,7 +28,10 @@ data class ServerConfig(
     val preferExternalEmulator: Boolean = true
 ) {
     val isConfigured: Boolean
-        get() = url.isNotBlank()
+        get() = url.isNotBlank() || localUrl.isNotBlank() || remoteUrl.isNotBlank()
+
+    val effectiveUrl: String
+        get() = url.ifBlank { localUrl }.ifBlank { remoteUrl }.trim().trimEnd('/')
 }
 
 data class ProbeResult(
@@ -28,6 +47,14 @@ data class PlatformItem(
     val slug: String,
     val name: String,
     val romCount: Int = 0
+)
+
+data class CollectionItem(
+    val id: Int,
+    val name: String,
+    val romCount: Int = 0,
+    val isPublic: Boolean = false,
+    val isVirtual: Boolean = false
 )
 
 data class RomItem(

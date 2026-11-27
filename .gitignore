@@ -8,3 +8,8 @@ shell/RommForXbox.Shell/*.pfx
 
 # Editor/agent scratch (the parent workspace config already covers this repo)
 .claude/
+
+# Android Gradle build artifacts
+android/.gradle/
+android/.kotlin/
+android/app/build/
