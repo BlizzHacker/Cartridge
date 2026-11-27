@@ -155,7 +155,8 @@ private val CartridgeDarkColors = darkColorScheme(
 @Composable
 fun CartridgeLauncherApp(
     gamepadEvents: SharedFlow<String>,
-    onOpenBuiltInWebPlayer: (ServerConfig, RomItem?) -> Unit
+    onOpenBuiltInWebPlayer: (ServerConfig, RomItem?) -> Unit,
+    onOpenStreamPlayer: (ServerConfig, RomItem) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -366,6 +367,12 @@ fun CartridgeLauncherApp(
     }
 
     fun playRomNow(rom: RomItem, targetPkg: String? = null) {
+        // PS1+ consoles (Switch, Wii U, PS2, GC, Wii, 3DS, PS1, etc.) ALWAYS stream via RomM Stream Server!
+        if (rom.shouldStream && targetPkg == null) {
+            selectedRom = null
+            onOpenStreamPlayer(config, rom)
+            return
+        }
         val existing = RommApiClient.getLocalRomFile(context, rom)
         val bestPkg = targetPkg ?: EmulatorLauncher.bestInstalledForSlug(context, rom.platformSlug)?.installedPackage
         lastPlayedRom = rom
@@ -1237,7 +1244,11 @@ private fun HeroSpotlightBanner(
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isInstalled) "Play Now" else "Download & Play",
+                        text = when {
+                            rom.shouldStream -> "Stream Now"
+                            isInstalled -> "Play Now"
+                            else -> "Download & Play"
+                        },
                         fontWeight = FontWeight.ExtraBold
                     )
                 }

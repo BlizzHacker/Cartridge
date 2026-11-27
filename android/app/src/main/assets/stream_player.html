@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cartridge Stream Player</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100vw; height: 100vh; background: #000; color: #F8FAFC; font-family: sans-serif; overflow: hidden; }
+  video { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
+  #hud {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(7, 11, 22, 0.92); text-align: center; padding: 32px; gap: 14px; transition: opacity .25s ease;
+  }
+  #hud.hidden { opacity: 0; pointer-events: none; }
+  .title { font-size: 26px; font-weight: 900; color: #38BDF8; }
+  .status { font-size: 16px; color: #CBD5E1; max-width: 720px; }
+  .hint {
+    position: fixed; top: 18px; right: 22px; background: rgba(7,11,22,.72); color: #94A3B8;
+    font-size: 13px; padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(56,189,248,.35);
+  }
+</style>
+</head>
+<body>
+  <video id="v" autoplay playsinline></video>
+  <div id="hud">
+    <div class="title" id="title">Starting Stream...</div>
+    <div class="status" id="status">Connecting to RomM Stream Server...</div>
+  </div>
+  <div class="hint" id="hint">Hold <b>Start + Select</b> or press <b>Back</b> to exit</div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const streamBase = (params.get('stream') || '').replace(/\/+$/, '');
+  const platform = params.get('platform') || '';
+  const romName = params.get('rom') || '';
+  const title = params.get('title') || romName || 'Game Stream';
+
+  const videoEl = document.getElementById('v');
+  const hud = document.getElementById('hud');
+  const hint = document.getElementById('hint');
+  const titleEl = document.getElementById('title');
+  const statusEl = document.getElementById('status');
+  titleEl.textContent = title;
+
+  let pc = null, channel = null, sessionId = null, stopped = false;
+  const held = new Set();
+  let quitTimer = null;
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  function cleanup() {
+    if (stopped) return;
+    stopped = true;
+    try { channel && channel.close(); } catch (_) {}
+    try { pc && pc.close(); } catch (_) {}
+    if (sessionId && streamBase) {
+      navigator.sendBeacon(streamBase + '/api/rtc/' + encodeURIComponent(sessionId) + '/stop');
+    }
+  }
+
+  async function start() {
+    if (!streamBase) {
+      setStatus('No stream server configured. Set Stream Server URL in Cartridge Settings (e.g. http://192.168.0.94:8090).');
+      return;
+    }
+    try {
+      setStatus('Negotiating WebRTC stream with ' + streamBase + '...');
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.ontrack = (e) => {
+        videoEl.srcObject = e.streams[0];
+        videoEl.play().catch(() => {});
+        hud.classList.add('hidden');
+        setTimeout(() => { hint.style.opacity = '0'; }, 8000);
+      };
+      pc.onconnectionstatechange = () => {
+        if (!pc) return;
+        if (pc.connectionState === 'connected') {
+          hud.classList.add('hidden');
+        } else if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+          hud.classList.remove('hidden');
+          setStatus('Stream ended (' + pc.connectionState + '). Press Back to return to Cartridge.');
+        }
+      };
+
+      channel = pc.createDataChannel('input', { ordered: true });
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') return resolve();
+        pc.onicegatheringstatechange = () => { if (pc && pc.iceGatheringState === 'complete') resolve(); };
+        setTimeout(resolve, 2500);
+      });
+
+      setStatus('Starting ' + platform.toUpperCase() + ' emulator on server...');
+      const resp = await fetch(streamBase + '/api/rtc/offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, rom_name: romName, sdp: pc.localDescription.sdp })
+      });
+      if (!resp.ok) {
+        const errTxt = await resp.text().catch(() => '');
+        throw new Error('HTTP ' + resp.status + ' ' + errTxt.slice(0, 180));
+      }
+      const data = await resp.json();
+      if (!data.sdp) throw new Error(data.error || 'Stream server returned no SDP answer');
+      sessionId = data.session_id || null;
+      await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
+      setStatus('Connected! Waiting for video frame...');
+    } catch (e) {
+      hud.classList.remove('hidden');
+      setStatus('Stream error: ' + (e.message || e));
+    }
+  }
+
+  window.addEventListener('cartridge_gamepad_key', (e) => {
+    if (!e.detail) return;
+    const key = e.detail.key;
+    const down = !!e.detail.down;
+    if (down) held.add(key); else held.delete(key);
+    if (held.has('start') && held.has('select')) {
+      if (!quitTimer) {
+        quitTimer = setTimeout(() => {
+          cleanup();
+          if (window.CartridgeNative && window.CartridgeNative.exitApp) {
+            window.CartridgeNative.exitApp();
+          }
+        }, 900);
+      }
+    } else if (quitTimer) {
+      clearTimeout(quitTimer);
+      quitTimer = null;
+    }
+    if (channel && channel.readyState === 'open') {
+      channel.send(JSON.stringify({ key, pressed: down }));
+    }
+  });
+
+  window.addEventListener('cartridge_gamepad_axes', (e) => {
+    if (channel && channel.readyState === 'open' && e.detail) {
+      const d = e.detail;
+      channel.send(JSON.stringify({ axes: [d.lx || 0, d.ly || 0, d.rx || 0, d.ry || 0] }));
+    }
+  });
+
+  window.addEventListener('beforeunload', cleanup);
+
+  start();
+})();
+</script>
+</body>
+</html>

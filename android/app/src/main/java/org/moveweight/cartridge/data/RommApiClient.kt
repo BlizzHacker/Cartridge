@@ -41,10 +41,12 @@ object RommApiClient {
         val url = prefs.getString("server_url", "")?.trim()?.trimEnd('/') ?: ""
         val localUrl = prefs.getString("local_url", "")?.trim()?.trimEnd('/') ?: ""
         val remoteUrl = prefs.getString("remote_url", "")?.trim()?.trimEnd('/') ?: ""
+        val streamUrl = prefs.getString("stream_url", "")?.trim()?.trimEnd('/') ?: ""
         return ServerConfig(
             url = url.ifBlank { localUrl }.ifBlank { remoteUrl },
             localUrl = localUrl,
             remoteUrl = remoteUrl,
+            streamUrl = streamUrl,
             activeServerName = prefs.getString("server_name", "Primary Library") ?: "Primary Library",
             isUsingLocalLan = isLanUrl(url.ifBlank { localUrl }),
             token = prefs.getString("auth_token", "") ?: "",
@@ -63,6 +65,7 @@ object RommApiClient {
             .putString("server_url", activeUrl)
             .putString("local_url", config.localUrl.trim().trimEnd('/'))
             .putString("remote_url", config.remoteUrl.trim().trimEnd('/'))
+            .putString("stream_url", config.streamUrl.trim().trimEnd('/'))
             .putString("server_name", config.activeServerName.ifBlank { "Primary Library" })
             .putString("auth_token", config.token)
             .putString("basic_auth", config.basicAuth)

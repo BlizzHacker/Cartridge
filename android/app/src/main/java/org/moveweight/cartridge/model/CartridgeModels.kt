@@ -18,6 +18,7 @@ data class ServerConfig(
     val url: String = "",
     val localUrl: String = "",
     val remoteUrl: String = "",
+    val streamUrl: String = "",
     val activeServerName: String = "Primary Library",
     val isUsingLocalLan: Boolean = false,
     val token: String = "",
@@ -32,6 +33,15 @@ data class ServerConfig(
 
     val effectiveUrl: String
         get() = url.ifBlank { localUrl }.ifBlank { remoteUrl }.trim().trimEnd('/')
+
+    val effectiveStreamUrl: String
+        get() {
+            if (streamUrl.isNotBlank()) return streamUrl.trim().trimEnd('/')
+            // Auto-derive RomM Stream Server (:8090) from LAN RomM IP (:8080)
+            val lan = localUrl.ifBlank { url }.trim().trimEnd('/')
+            if (lan.contains(":8080")) return lan.replace(":8080", ":8090")
+            return ""
+        }
 }
 
 data class ProbeResult(
@@ -77,7 +87,28 @@ data class RomItem(
 ) {
     val formattedSize: String
         get() = formatBytes(fileSizeBytes)
+
+    /**
+     * PS1 and newer consoles (Switch, Wii U, PS2, PS3, GameCube, Wii, 3DS, PSP, Saturn, Dreamcast, PS1, PC)
+     * should stream directly from the RomM Stream Server rather than downloading multi-GB ISOs to a TV box.
+     */
+    val shouldStream: Boolean
+        get() {
+            val s = platformSlug.trim().lowercase()
+            return s in STREAM_TIER_SLUGS || fileSizeBytes >= 128L * 1024L * 1024L
+        }
 }
+
+val STREAM_TIER_SLUGS: Set<String> = setOf(
+    "psx", "ps", "ps1", "playstation",
+    "ps2", "playstation-2", "ps3", "playstation-3",
+    "psp", "playstation-portable", "vita", "psvita",
+    "saturn", "sega-saturn", "dc", "dreamcast",
+    "gc", "ngc", "gamecube", "wii", "wiiu", "wii-u",
+    "3ds", "nintendo-3ds", "new-nintendo-3ds",
+    "switch", "nintendo-switch",
+    "xbox", "xbox360", "dos", "win", "windows", "pc"
+)
 
 data class LocalRomEntry(
     val romId: Int,

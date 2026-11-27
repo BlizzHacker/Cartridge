@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity() {
                 gamepadEvents = gamepadEvents,
                 onOpenBuiltInWebPlayer = { config, rom ->
                     openBuiltInWebPlayer(config, rom)
+                },
+                onOpenStreamPlayer = { config, rom ->
+                    openStreamPlayer(config, rom)
                 }
             )
         }
@@ -87,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         val localUrl = intent.getStringExtra("local_url")?.trim()?.trimEnd('/') ?: ""
         val remoteUrl = intent.getStringExtra("remote_url")?.trim()?.trimEnd('/') ?: ""
         val serverUrl = intent.getStringExtra("server_url")?.trim()?.trimEnd('/') ?: ""
+        val streamUrl = intent.getStringExtra("stream_url")?.trim()?.trimEnd('/') ?: ""
         val token = intent.getStringExtra("auth_token")?.trim() ?: ""
         val basicAuth = intent.getStringExtra("basic_auth")?.trim() ?: ""
         val username = intent.getStringExtra("username")?.trim() ?: ""
@@ -98,12 +102,13 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putString("server_profiles_json", profilesJson).apply()
         }
 
-        if (localUrl.isNotBlank() || remoteUrl.isNotBlank() || serverUrl.isNotBlank()) {
+        if (localUrl.isNotBlank() || remoteUrl.isNotBlank() || serverUrl.isNotBlank() || streamUrl.isNotBlank()) {
             val current = RommApiClient.loadSavedConfig(this)
             val updated = current.copy(
-                url = serverUrl.ifBlank { localUrl }.ifBlank { remoteUrl },
+                url = serverUrl.ifBlank { localUrl }.ifBlank { remoteUrl }.ifBlank { current.url },
                 localUrl = localUrl.ifBlank { current.localUrl },
                 remoteUrl = remoteUrl.ifBlank { current.remoteUrl },
+                streamUrl = streamUrl.ifBlank { current.streamUrl },
                 activeServerName = serverName.ifBlank { current.activeServerName },
                 token = token.ifBlank { current.token },
                 basicAuth = basicAuth.ifBlank { current.basicAuth },
@@ -117,6 +122,19 @@ class MainActivity : AppCompatActivity() {
             RommApiClient.saveConfig(this, updated)
             RommApiClient.upsertProfileFromConfig(this, updated)
         }
+    }
+
+    private fun openStreamPlayer(config: ServerConfig, rom: RomItem) {
+        isInWebPlayer = true
+        composeView.visibility = View.GONE
+        webView.visibility = View.VISIBLE
+        hideSystemUI()
+        val streamBase = config.effectiveStreamUrl
+        val qStream = Uri.encode(streamBase)
+        val qPlat = Uri.encode(rom.platformSlug)
+        val qRom = Uri.encode(rom.fileName)
+        val qTitle = Uri.encode(rom.name)
+        webView.loadUrl("file:///android_asset/stream_player.html?stream=$qStream&platform=$qPlat&rom=$qRom&title=$qTitle")
     }
 
     private fun openBuiltInWebPlayer(config: ServerConfig, rom: RomItem?) {
@@ -292,6 +310,8 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_BUTTON_R1 -> "r1"
             KeyEvent.KEYCODE_BUTTON_L2 -> "l2"
             KeyEvent.KEYCODE_BUTTON_R2 -> "r2"
+            KeyEvent.KEYCODE_BUTTON_THUMBL -> "l3"
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> "r3"
             KeyEvent.KEYCODE_BUTTON_START -> "start"
             KeyEvent.KEYCODE_BUTTON_SELECT -> "select"
             KeyEvent.KEYCODE_DPAD_UP -> "up"

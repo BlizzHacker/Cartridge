@@ -229,17 +229,22 @@ fun GameDetailDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Primary Play / Download Actions
+                // Primary Play / Stream / Download Actions
                 Button(
-                    onClick = { onPlayExternal(bestInstalled?.installedPackage) },
+                    onClick = { onPlayExternal(if (rom.shouldStream) null else bestInstalled?.installedPackage) },
                     enabled = !isDownloading,
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8), contentColor = Color(0xFF0B1020)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (rom.shouldStream) Color(0xFFA78BFA) else Color(0xFF38BDF8),
+                        contentColor = Color(0xFF0B1020)
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     val label = when {
+                        rom.shouldStream ->
+                            "Stream ${rom.platformSlug.uppercase()} via RomM Stream Server"
                         localFile == null && bestInstalled != null ->
                             "Download & Play in ${bestInstalled.target.displayName}"
                         localFile != null && bestInstalled != null ->
