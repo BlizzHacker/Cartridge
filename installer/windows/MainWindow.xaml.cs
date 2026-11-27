@@ -279,6 +279,9 @@ public partial class MainWindow : Window
         var lemUrl = await GetLatestGitHubApkAsync("Swordfish90/Lemuroid", @"\.apk$");
         if (lemUrl != null) await DownloadAndInstallApkAsync(adb, target, "Lemuroid (Zero-Core)", lemUrl, "lemuroid.apk");
 
+        var mlUrl = await GetLatestGitHubApkAsync("moonlight-stream/moonlight-android", @"\.apk$");
+        if (mlUrl != null) await DownloadAndInstallApkAsync(adb, target, "Moonlight Game Streaming", mlUrl, "moonlight.apk");
+
         SetProgress(68, "Installing Cartridge for Android TV...");
         var cartUrl = await GetLatestGitHubApkAsync("BlizzHacker/Cartridge", @"\.apk$");
         if (cartUrl != null) await DownloadAndInstallApkAsync(adb, target, "Cartridge", cartUrl, "cartridge.apk");
