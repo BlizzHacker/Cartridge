@@ -38,6 +38,13 @@ class MainActivity : AppCompatActivity() {
     private var isInWebPlayer: Boolean = false
     private val _gamepadEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val gamepadEvents = _gamepadEvents.asSharedFlow()
+    private var lastHatLeft = false
+    private var lastHatRight = false
+    private var lastHatUp = false
+    private var lastHatDown = false
+    private var lastL2 = false
+    private var lastR2 = false
+    private var lastAxesSent = FloatArray(4)
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,6 +135,7 @@ class MainActivity : AppCompatActivity() {
         isInWebPlayer = true
         composeView.visibility = View.GONE
         webView.visibility = View.VISIBLE
+        webView.requestFocus()
         hideSystemUI()
         val streamBase = config.effectiveStreamUrl
         val qStream = Uri.encode(streamBase)
@@ -141,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         isInWebPlayer = true
         composeView.visibility = View.GONE
         webView.visibility = View.VISIBLE
+        webView.requestFocus()
         hideSystemUI()
         val baseUrl = config.effectiveUrl
         val targetUrl = when {
@@ -283,26 +292,58 @@ class MainActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    private fun sendWebGamepadKey(jsKey: String, isDown: Boolean) {
+        webView.evaluateJavascript(
+            "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_key', { detail: { key: '$jsKey', down: $isDown } })); }",
+            null
+        )
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (isInWebPlayer && ::webView.isInitialized) {
             val lx = event.getAxisValue(MotionEvent.AXIS_X)
             val ly = event.getAxisValue(MotionEvent.AXIS_Y)
             val rx = event.getAxisValue(MotionEvent.AXIS_Z)
             val ry = event.getAxisValue(MotionEvent.AXIS_RZ)
-            val lt = event.getAxisValue(MotionEvent.AXIS_LTRIGGER)
-            val rt = event.getAxisValue(MotionEvent.AXIS_RTRIGGER)
+            val lt = maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE))
+            val rt = maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS))
+            val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+            val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
 
-            webView.evaluateJavascript(
-                "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_axes', { detail: { lx: $lx, ly: $ly, rx: $rx, ry: $ry, lt: $lt, rt: $rt } })); }",
-                null
-            )
+            // Forward Xbox Bluetooth D-Pad (AXIS_HAT_X / AXIS_HAT_Y) as digital keys
+            val hatLeft = hatX < -0.5f
+            val hatRight = hatX > 0.5f
+            val hatUp = hatY < -0.5f
+            val hatDown = hatY > 0.5f
+            if (hatLeft != lastHatLeft) { lastHatLeft = hatLeft; sendWebGamepadKey("left", hatLeft) }
+            if (hatRight != lastHatRight) { lastHatRight = hatRight; sendWebGamepadKey("right", hatRight) }
+            if (hatUp != lastHatUp) { lastHatUp = hatUp; sendWebGamepadKey("up", hatUp) }
+            if (hatDown != lastHatDown) { lastHatDown = hatDown; sendWebGamepadKey("down", hatDown) }
+
+            // Forward analog triggers as l2 / r2 digital presses
+            val l2 = lt > 0.35f
+            val r2 = rt > 0.35f
+            if (l2 != lastL2) { lastL2 = l2; sendWebGamepadKey("l2", l2) }
+            if (r2 != lastR2) { lastR2 = r2; sendWebGamepadKey("r2", r2) }
+
+            // Forward analog sticks when changed beyond deadzone delta
+            val dx = kotlin.math.abs(lx - lastAxesSent[0]) + kotlin.math.abs(ly - lastAxesSent[1]) +
+                kotlin.math.abs(rx - lastAxesSent[2]) + kotlin.math.abs(ry - lastAxesSent[3])
+            if (dx > 0.03f) {
+                lastAxesSent[0] = lx; lastAxesSent[1] = ly; lastAxesSent[2] = rx; lastAxesSent[3] = ry
+                webView.evaluateJavascript(
+                    "if (window.dispatchEvent) { window.dispatchEvent(new CustomEvent('cartridge_gamepad_axes', { detail: { lx: $lx, ly: $ly, rx: $rx, ry: $ry, lt: $lt, rt: $rt } })); }",
+                    null
+                )
+            }
+            return true
         }
         return super.dispatchGenericMotionEvent(event)
     }
 
     private fun mapKeyCodeToJsKey(keyCode: Int): String? {
         return when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> "a"
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> "a"
             KeyEvent.KEYCODE_BUTTON_B -> "b"
             KeyEvent.KEYCODE_BUTTON_X -> "x"
             KeyEvent.KEYCODE_BUTTON_Y -> "y"
