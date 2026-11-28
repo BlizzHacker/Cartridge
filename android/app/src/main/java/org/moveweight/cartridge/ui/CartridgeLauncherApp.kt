@@ -695,11 +695,11 @@ private fun TvConsoleTopBar(
 @Composable
 private fun TvNavPill(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.07f else 1f, label = "navScale")
+    val scale by animateFloatAsState(if (focused) 1.10f else 1f, label = "navScale")
     Surface(
         color = when {
+            focused -> Color(0xFFFACC15)
             selected -> AccentCyan
-            focused -> Color(0xFF1E3A5F)
             else -> BgCard
         },
         shape = RoundedCornerShape(999.dp),
@@ -707,7 +707,7 @@ private fun TvNavPill(label: String, selected: Boolean, onClick: () -> Unit) {
             .scale(scale)
             .onFocusChanged { focused = it.isFocused }
             .border(
-                width = if (focused) 2.5.dp else 1.dp,
+                width = if (focused) 3.5.dp else 1.dp,
                 color = if (focused) Color.White else if (selected) AccentCyan else BorderSubtle,
                 shape = RoundedCornerShape(999.dp)
             )
@@ -716,9 +716,9 @@ private fun TvNavPill(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = label,
-            color = if (selected) BgDeep else TextPrimary,
+            color = if (focused || selected) BgDeep else TextPrimary,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Black,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
     }
@@ -1113,11 +1113,11 @@ private fun SystemChip(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "chipScale")
+    val scale by animateFloatAsState(if (focused) 1.09f else 1f, label = "chipScale")
     Surface(
         color = when {
+            focused -> Color(0xFFFACC15)
             selected -> accent
-            focused -> Color(0xFF1E3A5F)
             else -> BgSurface
         },
         shape = RoundedCornerShape(10.dp),
@@ -1125,7 +1125,7 @@ private fun SystemChip(
             .scale(scale)
             .onFocusChanged { focused = it.isFocused }
             .border(
-                width = if (focused) 2.5.dp else 1.dp,
+                width = if (focused) 3.5.dp else 1.dp,
                 color = if (focused) Color.White else if (selected) accent else BorderSubtle,
                 shape = RoundedCornerShape(10.dp)
             )
@@ -1134,9 +1134,9 @@ private fun SystemChip(
     ) {
         Text(
             text = label,
-            color = if (selected) BgDeep else TextPrimary,
+            color = if (focused || selected) BgDeep else TextPrimary,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Black,
             maxLines = 1,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
@@ -1236,9 +1236,22 @@ private fun HeroSpotlightBanner(
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                var playFocused by remember { mutableStateOf(false) }
+                var detailsFocused by remember { mutableStateOf(false) }
                 Button(
                     onClick = onPlay,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = BgDeep),
+                    modifier = Modifier
+                        .scale(if (playFocused) 1.08f else 1f)
+                        .onFocusChanged { playFocused = it.isFocused }
+                        .border(
+                            width = if (playFocused) 3.5.dp else 0.dp,
+                            color = if (playFocused) Color(0xFFFACC15) else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (playFocused) Color(0xFFFACC15) else AccentCyan,
+                        contentColor = BgDeep
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -1249,14 +1262,29 @@ private fun HeroSpotlightBanner(
                             isInstalled -> "Play Now"
                             else -> "Download & Play"
                         },
-                        fontWeight = FontWeight.ExtraBold
+                        fontWeight = FontWeight.Black
                     )
                 }
                 OutlinedButton(
                     onClick = onDetails,
+                    modifier = Modifier
+                        .scale(if (detailsFocused) 1.08f else 1f)
+                        .onFocusChanged { detailsFocused = it.isFocused }
+                        .border(
+                            width = if (detailsFocused) 3.5.dp else 1.dp,
+                            color = if (detailsFocused) Color(0xFFFACC15) else BorderSubtle,
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (detailsFocused) Color(0xFF1E3A5F) else Color.Transparent
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Game Details", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Game Details",
+                        color = if (detailsFocused) Color(0xFFFACC15) else TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -1272,7 +1300,7 @@ private fun RomGridTile(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.055f else 1f, label = "cardScale")
+    val scale by animateFloatAsState(if (focused) 1.07f else 1f, label = "cardScale")
 
     Card(
         modifier = Modifier
@@ -1284,9 +1312,9 @@ private fun RomGridTile(
             }
             .clip(RoundedCornerShape(16.dp))
             .border(
-                width = if (focused) 3.dp else 1.dp,
+                width = if (focused) 4.dp else 1.dp,
                 color = when {
-                    focused -> AccentCyan
+                    focused -> Color(0xFFFACC15)
                     isInstalled -> AccentEmerald.copy(alpha = 0.65f)
                     else -> BorderSubtle
                 },

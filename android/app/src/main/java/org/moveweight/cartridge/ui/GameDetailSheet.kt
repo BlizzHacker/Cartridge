@@ -39,9 +39,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -230,12 +235,25 @@ fun GameDetailDialog(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Primary Play / Stream / Download Actions
+                var primaryFocused by remember { mutableStateOf(false) }
                 Button(
                     onClick = { onPlayExternal(if (rom.shouldStream) null else bestInstalled?.installedPackage) },
                     enabled = !isDownloading,
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .onFocusChanged { primaryFocused = it.isFocused }
+                        .border(
+                            width = if (primaryFocused) 4.dp else 0.dp,
+                            color = if (primaryFocused) Color.White else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp)
+                        ),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (rom.shouldStream) Color(0xFFA78BFA) else Color(0xFF38BDF8),
+                        containerColor = when {
+                            primaryFocused -> Color(0xFFFACC15)
+                            rom.shouldStream -> Color(0xFFA78BFA)
+                            else -> Color(0xFF38BDF8)
+                        },
                         contentColor = Color(0xFF0B1020)
                     ),
                     shape = RoundedCornerShape(12.dp)
@@ -254,7 +272,7 @@ fun GameDetailDialog(
                         else ->
                             "Launch in External Emulator"
                     }
-                    Text(text = label, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(text = label, fontWeight = FontWeight.Black, fontSize = 15.sp)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -263,37 +281,72 @@ fun GameDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    var dlFocused by remember { mutableStateOf(false) }
+                    var webFocused by remember { mutableStateOf(false) }
                     if (localFile == null) {
                         OutlinedButton(
                             onClick = onDownload,
                             enabled = !isDownloading,
-                            modifier = Modifier.weight(1f).height(46.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .onFocusChanged { dlFocused = it.isFocused }
+                                .border(
+                                    width = if (dlFocused) 3.5.dp else 1.dp,
+                                    color = if (dlFocused) Color(0xFFFACC15) else Color(0xFF2E4370),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (dlFocused) Color(0xFF1E3A5F) else Color.Transparent
+                            ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF38BDF8))
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = if (dlFocused) Color(0xFFFACC15) else Color(0xFF38BDF8))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Download ROM", color = Color(0xFFF8FAFC))
+                            Text("Download ROM", color = if (dlFocused) Color(0xFFFACC15) else Color(0xFFF8FAFC), fontWeight = FontWeight.Bold)
                         }
                     } else {
                         OutlinedButton(
                             onClick = onDeleteLocal,
-                            modifier = Modifier.weight(1f).height(46.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .onFocusChanged { dlFocused = it.isFocused }
+                                .border(
+                                    width = if (dlFocused) 3.5.dp else 1.dp,
+                                    color = if (dlFocused) Color(0xFFFACC15) else Color(0xFF2E4370),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (dlFocused) Color(0xFF1E3A5F) else Color.Transparent
+                            ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFF87171))
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = if (dlFocused) Color(0xFFFACC15) else Color(0xFFF87171))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Delete Local Copy", color = Color(0xFFF87171))
+                            Text("Delete Local Copy", color = if (dlFocused) Color(0xFFFACC15) else Color(0xFFF87171), fontWeight = FontWeight.Bold)
                         }
                     }
 
                     OutlinedButton(
                         onClick = onPlayBuiltInWeb,
-                        modifier = Modifier.weight(1f).height(46.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .onFocusChanged { webFocused = it.isFocused }
+                            .border(
+                                width = if (webFocused) 3.5.dp else 1.dp,
+                                color = if (webFocused) Color(0xFFFACC15) else Color(0xFF2E4370),
+                                shape = RoundedCornerShape(12.dp)
+                            ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (webFocused) Color(0xFF1E3A5F) else Color.Transparent
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFF4ADE80))
+                        Icon(Icons.Default.Star, contentDescription = null, tint = if (webFocused) Color(0xFFFACC15) else Color(0xFF4ADE80))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Built-In Player", color = Color(0xFFF8FAFC))
+                        Text("Built-In Player", color = if (webFocused) Color(0xFFFACC15) else Color(0xFFF8FAFC), fontWeight = FontWeight.Bold)
                     }
                 }
 
